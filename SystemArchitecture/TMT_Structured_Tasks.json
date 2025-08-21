@@ -1,0 +1,835 @@
+{
+  "project": {
+    "name": "Mipe Distance Measurement System",
+    "description": "BLE-based distance measurement system with 10% accuracy and power-optimized Mipe device",
+    "master_prompt_reference": "/home/ubuntu/Master_Project_Prompt.md"
+  },
+  "tmts": {
+    "TMT1": {
+      "name": "MotoApp Foundation",
+      "description": "Build complete MotoApp user interface and functionality (no BLE connectivity)",
+      "objective": "Create fully functional Android app UI with mock data",
+      "tasks": [
+        {
+          "task_id": "M018",
+          "component": "MotoApp",
+          "task_name": "Real-time Data Display",
+          "task_description": "Replace mock data with real data received from Host via BLE. Update distance display, graphs, and status indicators with live data.",
+          "dependencies": ["M017"],
+          "test_instructions": "Verify UI updates with real data from Host, graphs display live measurements, all status indicators reflect actual connection state",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": false
+        },
+        {
+          "task_id": "M019",
+          "component": "MotoApp",
+          "task_name": "Connection Status Integration",
+          "task_description": "Integrate real BLE connection status into UI. Update connection screen with actual Host device information and connection state.",
+          "dependencies": ["M015", "M018"],
+          "test_instructions": "Verify connection status screen shows real Host device info, connection state updates correctly, error messages display when appropriate",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": false
+        },
+        {
+          "task_id": "M003",
+          "component": "MotoApp",
+          "task_name": "Connection Status Screen",
+          "task_description": "Create connection status screen showing Host device discovery status, connection indicators, and device information display. Include 'Connect to Host' button and connection state messages.",
+          "dependencies": ["M001"],
+          "test_instructions": "Verify connection screen shows proper disconnected state, connect button is functional (shows 'searching' state), device info area is ready",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "M004",
+          "component": "MotoApp",
+          "task_name": "Measurement Display Screen",
+          "task_description": "Implement real-time distance graph display, measurement history list, and measurement statistics. Create graph component that can display distance over time with mock data.",
+          "dependencies": ["M001"],
+          "test_instructions": "Verify graph displays mock distance data over time, measurement history shows sample entries, statistics calculate correctly",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "M005",
+          "component": "MotoApp",
+          "task_name": "Settings Configuration Screen",
+          "task_description": "Create settings screen with BLE configuration options, measurement parameters (update intervals, accuracy settings), and calibration options. Include app preferences and about section.",
+          "dependencies": ["M001"],
+          "test_instructions": "Verify all settings options are accessible, preferences save/load correctly, calibration section is prepared for future use",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M006",
+          "component": "MotoApp",
+          "task_name": "Navigation System",
+          "task_description": "Implement navigation between all screens using bottom navigation bar or drawer menu. Ensure smooth transitions and proper back button handling.",
+          "dependencies": ["M002", "M003", "M004", "M005"],
+          "test_instructions": "Verify navigation works between all screens, back button functions correctly, navigation state is preserved",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M007",
+          "component": "MotoApp",
+          "task_name": "Mock Data Generation",
+          "task_description": "Create mock data generator for testing UI components. Generate realistic distance measurements (1-15m range), RSSI values (-40 to -80 dBm), battery levels, and connection states.",
+          "dependencies": ["M002", "M004"],
+          "test_instructions": "Verify mock data appears realistic, updates at appropriate intervals, covers full range of expected values",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M008",
+          "component": "MotoApp",
+          "task_name": "Status Indicators System",
+          "task_description": "Implement comprehensive status indicator system for connection state, battery levels (Host and Mipe), error messages, and measurement status. Include visual and text indicators.",
+          "dependencies": ["M002", "M003"],
+          "test_instructions": "Verify all status indicators display correctly, color coding is appropriate, text messages are clear and informative",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M009",
+          "component": "MotoApp",
+          "task_name": "Control Buttons Implementation",
+          "task_description": "Implement all control buttons: start/stop measurement, connect/disconnect Host, settings access, measurement history clear. Ensure proper button states and user feedback.",
+          "dependencies": ["M002", "M003", "M004", "M005"],
+          "test_instructions": "Verify all buttons respond correctly, show appropriate states (enabled/disabled), provide user feedback on press",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M010",
+          "component": "MotoApp",
+          "task_name": "UI Polish and Testing",
+          "task_description": "Polish user interface design, ensure consistent styling, proper spacing, and professional appearance. Test on multiple screen sizes and orientations.",
+          "dependencies": ["M006", "M007", "M008", "M009"],
+          "test_instructions": "Verify UI looks professional on different devices, responsive design works, no UI glitches or layout issues",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "M011",
+          "component": "MotoApp",
+          "task_name": "APK Build and Deployment",
+          "task_description": "Configure release build settings, sign APK, and test installation on target Android 14+ devices. Ensure all permissions are properly requested.",
+          "dependencies": ["M010"],
+          "test_instructions": "Verify APK installs successfully, all permissions requested correctly, app launches and functions on target devices",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        }
+      ]
+    },
+    "TMT2": {
+      "name": "App-Host BLE Integration",
+      "description": "Establish BLE communication between MotoApp and Host with simulated test data",
+      "objective": "Create working BLE connection with simulated measurement data streaming",
+      "tasks": [
+        {
+          "task_id": "H001",
+          "component": "Host",
+          "task_name": "System Initialization",
+          "task_description": "Initialize Nordic BLE stack, configure basic system components, and set up main application loop. Initialize LED system and button handlers.",
+          "dependencies": [],
+          "test_instructions": "Verify system boots correctly, LEDs initialize, main loop runs without errors",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H002",
+          "component": "Host",
+          "task_name": "LED Status System",
+          "task_description": "Implement LED0 heartbeat (1000ms intervals), LED1 for MotoApp connection status (200ms flash when advertising, solid when connected), LED2 reserved for future Mipe use.",
+          "dependencies": ["H001"],
+          "test_instructions": "Verify LED0 flashes consistently at 1000ms, LED1 flashes at 200ms when advertising, LEDs respond to connection state changes",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H003",
+          "component": "Host",
+          "task_name": "BLE Peripheral Setup",
+          "task_description": "Configure Host as BLE Peripheral for MotoApp discovery. Set up BLE stack, configure advertising parameters, and prepare for connections.",
+          "dependencies": ["H001"],
+          "test_instructions": "Verify BLE stack initializes correctly, advertising starts automatically, device is discoverable by BLE scanners",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H004",
+          "component": "Host",
+          "task_name": "Device Name Configuration",
+          "task_description": "Set device name as 'MIPE_HOST_[MAC_SUFFIX]' where MAC_SUFFIX is last 4 characters of device MAC address. Ensure name is included in advertising data.",
+          "dependencies": ["H003"],
+          "test_instructions": "Verify device advertises with correct name format, MAC suffix is properly extracted and included",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H005",
+          "component": "Host",
+          "task_name": "Service UUID Definition",
+          "task_description": "Define custom 128-bit UUID for Host service identification. Create primary service for MotoApp communication with unique identifier.",
+          "dependencies": ["H003"],
+          "test_instructions": "Verify custom service UUID is properly defined, service is discoverable by GATT clients",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H006",
+          "component": "Host",
+          "task_name": "GATT Services Implementation",
+          "task_description": "Implement GATT services with characteristics: Measurement Control (Write/Notify), Measurement Data (Read/Notify), System Status (Read/Notify), Configuration (Read/Write).",
+          "dependencies": ["H005"],
+          "test_instructions": "Verify all GATT characteristics are discoverable, read/write operations work correctly, notifications can be enabled",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H007",
+          "component": "Host",
+          "task_name": "Simulated Data Generation",
+          "task_description": "Create simulated measurement data generator: distance (1-15m with realistic variations), RSSI (-40 to -80 dBm), system status, battery simulation, timing data.",
+          "dependencies": ["H006"],
+          "test_instructions": "Verify simulated data appears realistic, updates at correct intervals, covers expected measurement ranges",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H008",
+          "component": "Host",
+          "task_name": "Connection Management",
+          "task_description": "Implement BLE connection handling: accept incoming connections, manage connection parameters, handle disconnections, update LED1 status accordingly.",
+          "dependencies": ["H006"],
+          "test_instructions": "Verify connections are accepted correctly, LED1 changes to solid when connected, disconnection handling works properly",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H009",
+          "component": "Host",
+          "task_name": "Data Streaming Implementation",
+          "task_description": "Implement real-time data streaming to MotoApp via GATT notifications. Stream simulated measurement data at regular intervals (100ms updates).",
+          "dependencies": ["H007", "H008"],
+          "test_instructions": "Verify data streams correctly to connected MotoApp, update rate is consistent, data format is correct",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "H010",
+          "component": "Host",
+          "task_name": "Button Handler",
+          "task_description": "Implement button controls for pairing mode activation and system functions. Configure button to trigger pairing mode with LED feedback.",
+          "dependencies": ["H002"],
+          "test_instructions": "Verify button press activates pairing mode, LED feedback indicates button press, pairing mode timeout works",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": false
+        },
+        {
+          "task_id": "M012",
+          "component": "MotoApp",
+          "task_name": "BLE Permissions Setup",
+          "task_description": "Configure Android BLE permissions (BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION) and implement runtime permission requests.",
+          "dependencies": ["M011"],
+          "test_instructions": "Verify all BLE permissions are requested correctly, user can grant permissions, app handles permission denial gracefully",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M013",
+          "component": "MotoApp",
+          "task_name": "BLE Manager Implementation",
+          "task_description": "Initialize Android BLE stack and adapter. Create BLE manager class to handle all BLE operations and state management.",
+          "dependencies": ["M012"],
+          "test_instructions": "Verify BLE adapter initializes correctly, BLE state changes are handled, manager class provides proper API",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": false
+        },
+        {
+          "task_id": "M014",
+          "component": "MotoApp",
+          "task_name": "Host Device Discovery",
+          "task_description": "Implement BLE scanning with service UUID filtering to discover Host devices. Filter devices by 'MIPE_HOST_' name pattern and display discovered devices.",
+          "dependencies": ["M013"],
+          "test_instructions": "Verify scanning discovers Host device correctly, filtering works by name pattern, discovered devices are displayed in UI",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "M015",
+          "component": "MotoApp",
+          "task_name": "BLE Connection Management",
+          "task_description": "Implement BLE connection establishment with discovered Host device. Handle connection state changes and update UI accordingly.",
+          "dependencies": ["M014"],
+          "test_instructions": "Verify connection to Host establishes successfully, connection state updates in UI, connection loss is detected",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "M016",
+          "component": "MotoApp",
+          "task_name": "GATT Service Discovery",
+          "task_description": "Implement GATT service discovery for Host services. Discover and validate all Host GATT characteristics and their properties.",
+          "dependencies": ["M015"],
+          "test_instructions": "Verify GATT services are discovered correctly, all characteristics are found, characteristic properties match expectations",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "M017",
+          "component": "MotoApp",
+          "task_name": "GATT Operations Implementation",
+          "task_description": "Implement GATT read/write operations and notification handling. Enable notifications for measurement data and system status characteristics.",
+          "dependencies": ["M016"],
+          "test_instructions": "Verify GATT read/write operations work correctly, notifications are received and processed, data format is correct",
+          "to_be_worked_on": false,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "M018",
+          "component": "MotoApp",
+          "task_name": "Real-time Data Display",
+          "task_description": "Replace mock data with real data received from Host via BLE. Update distance display, graphs, and status indicators with live data.",
+          "dependencies": ["M017"],
+          "test_instructions": "Verify UI updates with real data from Host, graphs display live measurements, all status indicators reflect actual connection state",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": true
+        },
+        {
+          "task_id": "M019",
+          "component": "MotoApp",
+          "task_name": "Connection Status Integration",
+          "task_description": "Integrate real BLE connection status into UI. Update connection screen with actual Host device information and connection state.",
+          "dependencies": ["M015", "M018"],
+          "test_instructions": "Verify connection status screen shows real Host device info, connection state updates correctly, error messages display when appropriate",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": true
+        },
+        {
+          "task_id": "M020",
+          "component": "MotoApp",
+          "task_name": "Error Handling Implementation",
+          "task_description": "Implement comprehensive error handling for BLE operations: connection failures, service discovery errors, GATT operation failures, timeout handling.",
+          "dependencies": ["M017"],
+          "test_instructions": "Verify error handling works for all BLE failure scenarios, user receives appropriate error messages, app recovers gracefully from errors",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I001",
+          "component": "Integration",
+          "task_name": "End-to-End Connection Test",
+          "task_description": "Test complete MotoApp to Host BLE connection: discovery, connection, service discovery, data streaming, and disconnection handling.",
+          "dependencies": ["H010", "M020"],
+          "test_instructions": "Verify complete connection flow works: MotoApp discovers Host, connects successfully, receives simulated data, handles disconnection properly",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": true
+        }
+      ]
+    },
+    "TMT3": {
+      "name": "Mipe Device Integration",
+      "description": "Add Mipe device and establish Host-Mipe communication with battery status monitoring",
+      "objective": "Integrate Mipe device with sequential BLE communication and battery monitoring",
+      "tasks": [
+        {
+          "task_id": "P001",
+          "component": "Mipe",
+          "task_name": "BLE Peripheral Configuration",
+          "task_description": "Configure Mipe as BLE Peripheral with stable advertising. Set up basic BLE stack, advertising parameters, and device identification for Host discovery.",
+          "dependencies": [],
+          "test_instructions": "Verify Mipe advertises consistently, is discoverable by BLE scanners, advertising parameters are stable",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "P002",
+          "component": "Mipe",
+          "task_name": "Device Identification Setup",
+          "task_description": "Configure Mipe device identification with unique name/UUID for Host recognition. Implement device capabilities advertisement.",
+          "dependencies": ["P001"],
+          "test_instructions": "Verify Mipe advertises with correct identification, Host can identify Mipe among other BLE devices",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "P003",
+          "component": "Mipe",
+          "task_name": "Connection Handling",
+          "task_description": "Implement BLE connection handling from Host device. Accept connections, manage connection parameters, and handle connection state changes.",
+          "dependencies": ["P002"],
+          "test_instructions": "Verify Mipe accepts connections from Host, connection parameters are optimized, connection state is properly managed",
+          "to_be_worked_on": true,
+          "built": true,
+          "verified": true
+        },
+        {
+          "task_id": "P004",
+          "component": "Mipe",
+          "task_name": "Battery Status System",
+          "task_description": "Implement battery level monitoring and reporting system. Create battery status characteristic for transmission to Host.",
+          "dependencies": ["P003"],
+          "test_instructions": "Verify battery level is accurately measured, battery status updates correctly, low battery detection works",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "P005",
+          "component": "Mipe",
+          "task_name": "Power-Optimized Protocol",
+          "task_description": "Implement basic power-optimized communication protocol. Mipe responds only when prompted by Host, minimizes unnecessary transmissions.",
+          "dependencies": ["P004"],
+          "test_instructions": "Verify Mipe only transmits when requested, power consumption is minimized during idle periods, protocol responses are consistent",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "P006",
+          "component": "Mipe",
+          "task_name": "Connection Recovery Implementation",
+          "task_description": "Implement connection recovery protocol: listening mode after connection loss, single ping response to reconnection attempts, pairing data preservation.",
+          "dependencies": ["P005"],
+          "test_instructions": "Verify Mipe enters listening mode after connection loss, responds to reconnection pings, preserves pairing information",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+    
+        {
+          "task_id": "H012",
+          "component": "Host",
+          "task_name": "Mipe BLE Central Setup",
+          "task_description": "Configure Host as BLE Central for Mipe device communication. Implement scanning, discovery, and connection establishment for Mipe devices.",
+          "dependencies": ["H011"],
+          "test_instructions": "Verify Host can scan for and discover Mipe devices, connection establishment works, BLE Central role functions correctly",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H013",
+          "component": "Host",
+          "task_name": "Mipe Device Discovery",
+          "task_description": "Implement scanning and discovery of Mipe devices by identification. Filter and select appropriate Mipe device for connection.",
+          "dependencies": ["H012"],
+          "test_instructions": "Verify Host discovers Mipe devices correctly, filtering works by device identification, appropriate device selection",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": true
+        },
+        {
+          "task_id": "H014",
+          "component": "Host",
+          "task_name": "Mipe Connection Management",
+          "task_description": "Handle BLE connection establishment with Mipe device. Manage connection parameters, monitor connection health, handle disconnections.",
+          "dependencies": ["H013"],
+          "test_instructions": "Verify Host connects to Mipe successfully, connection parameters are optimized, disconnection detection works",
+          "to_be_worked_on": true,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H015",
+          "component": "Host",
+          "task_name": "LED2 Status Implementation",
+          "task_description": "Implement LED2 status indication for Mipe connection: flashing when scanning/connecting, solid when connected, off when disconnected.",
+          "dependencies": ["H014"],
+          "test_instructions": "Verify LED2 flashes during Mipe discovery, goes solid when connected, turns off when disconnected",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H016",
+          "component": "Host",
+          "task_name": "Basic RSSI Sampling",
+          "task_description": "Implement basic RSSI measurement between Host and Mipe. Collect RSSI values during communication for initial distance estimation.",
+          "dependencies": ["H014"],
+          "test_instructions": "Verify RSSI values are collected correctly, measurements are consistent, data is available for processing",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H017",
+          "component": "Host",
+          "task_name": "Battery Status Integration",
+          "task_description": "Receive battery status from Mipe device and forward to MotoApp via GATT. Implement battery level monitoring and low battery warnings.",
+          "dependencies": ["H016"],
+          "test_instructions": "Verify battery status is received from Mipe, forwarded to MotoApp correctly, low battery warnings are generated",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H018",
+          "component": "Host",
+          "task_name": "Connection Recovery Protocol",
+          "task_description": "Implement Host side of connection recovery: detect Mipe connection loss, attempt reconnection with single ping, handle reconnection responses.",
+          "dependencies": ["H017"],
+          "test_instructions": "Verify Host detects Mipe connection loss, sends reconnection pings correctly, handles Mipe responses appropriately",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M021",
+          "component": "MotoApp",
+          "task_name": "Mipe Status Display",
+          "task_description": "Add Mipe device status display to UI: connection status, battery level, signal strength. Update connection screen with Mipe information.",
+          "dependencies": ["M020"],
+          "test_instructions": "Verify Mipe status displays correctly in UI, battery level updates in real-time, connection status reflects actual state",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M022",
+          "component": "MotoApp",
+          "task_name": "Battery Level Monitoring",
+          "task_description": "Implement battery level display for Mipe device. Show battery percentage, low battery warnings, and battery status history.",
+          "dependencies": ["M021"],
+          "test_instructions": "Verify Mipe battery level displays correctly, low battery warnings appear when appropriate, battery history is maintained",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M023",
+          "component": "MotoApp",
+          "task_name": "Dual Connection Status",
+          "task_description": "Update UI to show both Host and Mipe connection status simultaneously. Display sequential connection mode status and device information.",
+          "dependencies": ["M022"],
+          "test_instructions": "Verify UI shows both Host and Mipe status correctly, sequential mode is clearly indicated, device information is accurate",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I002",
+          "component": "Integration",
+          "task_name": "Sequential Communication Test",
+          "task_description": "Test Host sequential communication: connect to MotoApp, switch to Mipe mode, connect to Mipe, collect RSSI data, switch back to MotoApp mode.",
+          "dependencies": ["H018", "M023"],
+          "test_instructions": "Verify Host switches between MotoApp and Mipe modes correctly, RSSI data is collected, MotoApp receives Mipe status and battery info",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I003",
+          "component": "Integration",
+          "task_name": "Connection Recovery Test",
+          "task_description": "Test connection recovery protocol: disconnect Mipe at various distances, verify listening mode activation, test reconnection ping response, validate data preservation.",
+          "dependencies": ["I002"],
+          "test_instructions": "Verify Mipe enters listening mode after disconnection, responds to reconnection pings, reconnection works at various distances",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I004",
+          "component": "Integration",
+          "task_name": "Battery Status End-to-End Test",
+          "task_description": "Test complete battery status flow: Mipe measures battery, transmits to Host, Host forwards to MotoApp, MotoApp displays battery level and warnings.",
+          "dependencies": ["I003"],
+          "test_instructions": "Verify battery status flows correctly from Mipe to MotoApp, real-time updates work, low battery warnings appear in MotoApp",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        }
+      ]
+    },
+    "TMT4": {
+      "name": "Distance Calculation with Real Data",
+      "description": "Implement advanced distance calculation using real RSSI and timing data from Mipe",
+      "objective": "Replace all simulated data with real calculations achieving 10% accuracy",
+      "tasks": [
+        {
+          "task_id": "H019",
+          "component": "Host",
+          "task_name": "Turn-Around Time Measurement",
+          "task_description": "Implement precise timing measurement from Host request transmission to Mipe response reception. Achieve sub-millisecond precision using hardware timers.",
+          "dependencies": ["H018"],
+          "test_instructions": "Verify timing measurements are consistent (<1ms variation), precision is sub-millisecond, timing data correlates with distance",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H020",
+          "component": "Host",
+          "task_name": "RSSI Data Collection",
+          "task_description": "Replace simulated RSSI data with real measurements from Host-Mipe communication. Implement statistical filtering and data validation.",
+          "dependencies": ["H019"],
+          "test_instructions": "Verify real RSSI data replaces simulated data, measurements are consistent, statistical filtering removes outliers",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H021",
+          "component": "Host",
+          "task_name": "Measurement Data Fusion",
+          "task_description": "Combine RSSI and turn-around time data into unified measurement packets. Create data structure for multi-modal distance calculation.",
+          "dependencies": ["H020"],
+          "test_instructions": "Verify RSSI and timing data are properly combined, data structure supports multiple measurement types, synchronization is correct",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H022",
+          "component": "Host",
+          "task_name": "Environmental Data Collection",
+          "task_description": "Collect environmental factors that affect measurements: temperature, interference levels, connection quality indicators for compensation algorithms.",
+          "dependencies": ["H021"],
+          "test_instructions": "Verify environmental data is collected correctly, correlates with measurement variations, data is available for compensation",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H023",
+          "component": "Host",
+          "task_name": "Data Logging System",
+          "task_description": "Implement comprehensive data logging for algorithm development: raw RSSI, timing data, environmental factors, calculated distances, accuracy metrics.",
+          "dependencies": ["H022"],
+          "test_instructions": "Verify all measurement data is logged correctly, log format supports analysis, data integrity is maintained",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H024",
+          "component": "Host",
+          "task_name": "Basic Distance Models",
+          "task_description": "Implement basic distance calculation models: Free Space Path Loss (FSPL), log-distance path loss, and direct timing-based calculation.",
+          "dependencies": ["H023"],
+          "test_instructions": "Verify basic models produce reasonable distance estimates, calculations are mathematically correct, models handle edge cases",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H025",
+          "component": "Host",
+          "task_name": "Data Clustering Implementation",
+          "task_description": "Implement K-means clustering for measurement pattern recognition. Group measurements by environmental conditions and distance ranges.",
+          "dependencies": ["H024"],
+          "test_instructions": "Verify clustering identifies distinct measurement patterns, grouping is logical, outlier detection works correctly",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H026",
+          "component": "Host",
+          "task_name": "Algorithm Iteration Framework",
+          "task_description": "Create framework for testing multiple distance calculation algorithms. Support algorithm comparison, parameter optimization, and performance evaluation.",
+          "dependencies": ["H025"],
+          "test_instructions": "Verify framework can test multiple algorithms, performance comparison works, parameter optimization is functional",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H027",
+          "component": "Host",
+          "task_name": "Hybrid Algorithm Development",
+          "task_description": "Develop hybrid algorithms combining RSSI and timing data. Implement weighted fusion, Kalman filtering, and statistical estimation techniques.",
+          "dependencies": ["H026"],
+          "test_instructions": "Verify hybrid algorithms improve accuracy over single-method approaches, weighting adapts to conditions, filtering reduces noise",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H028",
+          "component": "Host",
+          "task_name": "Real-time Distance Calculation",
+          "task_description": "Implement real-time distance calculation with <100ms latency. Replace all simulated distance data with calculated results from real measurements.",
+          "dependencies": ["H027"],
+          "test_instructions": "Verify distance calculation meets latency requirements, real data replaces simulated data, calculations are stable and consistent",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H029",
+          "component": "Host",
+          "task_name": "Accuracy Validation System",
+          "task_description": "Implement system to validate distance accuracy at known test distances (1m, 3m, 5m, 10m, 15m). Calculate accuracy metrics and confidence intervals.",
+          "dependencies": ["H028"],
+          "test_instructions": "Verify accuracy validation works at all test distances, 10% accuracy target is measurable, confidence intervals are calculated",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "H030",
+          "component": "Host",
+          "task_name": "Algorithm Selection System",
+          "task_description": "Implement automatic algorithm selection based on environmental conditions and measurement quality. Choose optimal algorithm for current conditions.",
+          "dependencies": ["H029"],
+          "test_instructions": "Verify algorithm selection adapts to conditions, optimal algorithm is chosen automatically, performance improves with selection",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M024",
+          "component": "MotoApp",
+          "task_name": "Real Distance Display",
+          "task_description": "Replace all simulated distance data in UI with real calculated distances from Host. Update main screen, graphs, and measurement displays.",
+          "dependencies": ["M023"],
+          "test_instructions": "Verify UI displays real calculated distances, simulated data is completely removed, distance updates are smooth and consistent",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M025",
+          "component": "MotoApp",
+          "task_name": "Confidence Interval Display",
+          "task_description": "Add confidence interval display to distance measurements. Show measurement uncertainty and algorithm confidence in the UI.",
+          "dependencies": ["M024"],
+          "test_instructions": "Verify confidence intervals display correctly, uncertainty is clearly indicated, users understand measurement reliability",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M026",
+          "component": "MotoApp",
+          "task_name": "Algorithm Performance Display",
+          "task_description": "Add display of current algorithm performance: accuracy metrics, algorithm type in use, measurement quality indicators.",
+          "dependencies": ["M025"],
+          "test_instructions": "Verify algorithm performance is displayed clearly, users can see which algorithm is active, performance metrics are understandable",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M027",
+          "component": "MotoApp",
+          "task_name": "Measurement History Enhancement",
+          "task_description": "Enhance measurement history with real data: actual distances, timestamps, accuracy metrics, environmental conditions during measurement.",
+          "dependencies": ["M026"],
+          "test_instructions": "Verify measurement history shows real data, historical accuracy is tracked, environmental conditions are recorded",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "M028",
+          "component": "MotoApp",
+          "task_name": "Data Export for Analysis",
+          "task_description": "Implement data export functionality for measurement analysis: export raw data, calculated distances, accuracy metrics in CSV format for external analysis.",
+          "dependencies": ["M027"],
+          "test_instructions": "Verify data export works correctly, exported data is complete and accurate, CSV format is properly structured",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I005",
+          "component": "Integration",
+          "task_name": "Distance Accuracy Validation",
+          "task_description": "Test distance calculation accuracy at multiple known distances. Validate 10% accuracy target across different environmental conditions.",
+          "dependencies": ["H030", "M028"],
+          "test_instructions": "Verify distance calculations achieve 10% accuracy at test distances (1m, 3m, 5m, 10m, 15m), accuracy is consistent across conditions",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I006",
+          "component": "Integration",
+          "task_name": "Algorithm Performance Comparison",
+          "task_description": "Compare performance of different distance calculation algorithms. Evaluate accuracy, latency, and reliability under various conditions.",
+          "dependencies": ["I005"],
+          "test_instructions": "Verify algorithm comparison identifies best-performing approaches, performance metrics are reliable, selection criteria are appropriate",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I007",
+          "component": "Integration",
+          "task_name": "Real-time Performance Test",
+          "task_description": "Test real-time distance calculation performance: latency, update rate, stability, and accuracy during continuous measurement sessions.",
+          "dependencies": ["I006"],
+          "test_instructions": "Verify real-time performance meets requirements (<100ms latency), update rate is consistent, measurements remain stable over time",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        },
+        {
+          "task_id": "I008",
+          "component": "Integration",
+          "task_name": "Environmental Compensation Test",
+          "task_description": "Test distance calculation accuracy under different environmental conditions: temperature variations, interference, obstacles, different locations.",
+          "dependencies": ["I007"],
+          "test_instructions": "Verify environmental compensation improves accuracy, algorithms adapt to conditions, performance is maintained across environments",
+          "to_be_worked_on": false,
+          "built": false,
+          "verified": false
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_tasks": 76,
+    "tmt_breakdown": {
+      "TMT1": 11,
+      "TMT2": 21,
+      "TMT3": 20,
+      "TMT4": 24
+    },
+    "component_breakdown": {
+      "MotoApp": 28,
+      "Host": 30,
+      "Mipe": 6,
+      "Integration": 12
+    },
+    "next_step": "Mark M001 (Android Project Setup) as 'to_be_worked_on': true to begin TMT1"
+  }
+}
