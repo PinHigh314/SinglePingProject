@@ -39,6 +39,9 @@ if "%commit_msg%"=="" (
 :: Stage all changes
 echo.
 echo Staging all changes...
+git add Host
+git add Mipe
+git add MotoApp
 git add -A
 
 :: Show what will be committed
