@@ -1,266 +1,320 @@
-# Build Experience & Engineering Best Practices
+# Build Experience Log - SinglePing Project
 
-This document serves as the definitive guide for the project's development environment, build processes, and engineering standards. All developers and AI assistants **must** adhere to these principles to ensure consistency, reliability, and quality.
+## August 23, 2025 - MotoApp BLE Implementation
 
----
+### Critical Issue Resolved: BLE Permissions
+**Problem**: MotoApp couldn't detect ANY BLE devices, not even the Host device.
 
-## 1. Firmware Build Environment (nRF / Zephyr)
+**Root Cause**: Missing location permissions for BLE scanning
+- AndroidManifest.xml had `ACCESS_FINE_LOCATION` with `maxSdkVersion="30"` - not available for Android 12+
+- MainActivity.kt only requested BLUETOOTH_SCAN and BLUETOOTH_CONNECT for Android 12+
+- Location permission is STILL required for BLE scanning on Android 12+
 
-### The Problem: Fragile, Terminal-Dependent Builds
+**Solution**:
+1. Updated AndroidManifest.xml to include location permissions for ALL Android versions
+2. Modified MainActivity.kt to request location permission along with Bluetooth permissions
+3. Added permission status display in debug screen
 
-Initial builds for the nRF54 firmware were failing in standard terminals. The process relied on the developer manually opening a special, pre-configured terminal from the nRF Connect Toolchain Manager. This is unreliable and prone to human error.
+**Key Learning**: Android requires location permissions for BLE scanning due to privacy concerns (BLE can be used for location tracking)
 
-### The Solution: Self-Sufficient Build Scripts
+### MotoApp Versions Built
+- **v3.4**: Debug version with permission fixes and enhanced scanner
+- **v3.5**: Complete production version with full BLE functionality
 
-The `build_firmware.sh` script was modified to be self-sufficient. It now contains a configuration variable (`NCS_DIR`) pointing to the nRF Connect SDK installation and automatically sources the `zephyr-env.sh` script at runtime.
-
-### **Rule: Build scripts MUST NOT depend on a manually prepared terminal.**
-- **DO:** Make scripts self-contained by having them set up their own environment.
-- **DON'T:** Assume the user will open a specific type of terminal.
-
----
-
-## 2. Android Build Environment (Android Studio / Gradle)
-
-### Global Tool Access (`adb`)
-
-- **Requirement:** To make Android tools like `adb` globally available, the `ANDROID_HOME` system environment variable must be set to the Android SDK location.
-- **Implementation:** The `%ANDROID_HOME%\platform-tools` directory must be added to the system's `Path` variable.
-- **Key Takeaway:** This makes `adb` accessible from any **new** terminal window (terminals opened before the change will not see it).
-
-### The Gradle Wrapper (`gradlew`)
-
-- **Requirement:** All Android builds **must** be executed using the local Gradle Wrapper (`./gradlew.bat` or `./gradlew`). This ensures every developer uses the exact same Gradle version, guaranteeing build consistency.
-- **Best Practice:** A global Gradle installation is not required for day-to-day builds. It is only useful for regenerating the wrapper if it's deleted.
-- **Rule:** The `build_android.sh` script **must** use the standard `gradle wrapper` command to generate the wrapper if it's missing. It **must not** embed the wrapper's script content directly, as this is brittle and unmaintainable.
-
-### Critical: Gradle Memory Configuration (Added 8/22/2025)
-
-#### The Problem: JVM Garbage Collector Thrashing
-During MotoApp TMT1 v2.0 development, Gradle builds were hanging indefinitely (30+ minutes) or failing with "Daemon is stopping immediately since the JVM garbage collector is thrashing" errors. The default memory allocation (512 MiB heap, 384 MiB metaspace) is insufficient for modern Android projects.
-
-#### The Solution: Proper JVM Memory Settings
-Configure adequate memory in `gradle.properties`:
-
-```properties
-# JVM memory settings to prevent garbage collector thrashing
-org.gradle.jvmargs=-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC
-
-# Enable Gradle daemon for faster builds
-org.gradle.daemon=true
-
-# Enable parallel builds
-org.gradle.parallel=true
-
-# Enable build caching
-org.gradle.caching=true
+### Build Commands Used
+```bash
+cd MotoApp && ./gradlew clean assembleDebug
+cd MotoApp && ./gradlew assembleDebug
+cp MotoApp/app/build/outputs/apk/debug/app-debug.apk compiled_code/MotoApp_TMT1_vX.X.apk
 ```
 
-#### **Rule: ALWAYS configure Gradle memory settings for Android projects**
-- **DO:** Set at least 2GB heap space (`-Xmx2048m`) for Android builds
-- **DO:** Enable the Gradle daemon and caching for faster subsequent builds
-- **DON'T:** Rely on default memory settings - they will cause build failures
-- **DIAGNOSTIC:** Check daemon logs at `~/.gradle/daemon/*/daemon-*.out.log` if builds hang
-
----
-
-## 3. VS Code IDE Configuration
-
-### The Problem: "Unable to initialize Gradle Language Server"
-
-This error occurs when VS Code's Gradle extension cannot find or use the correct Java Development Kit (JDK) version required by the project.
-
-### The Solution: Explicitly Configure Java Home
-
-The Android Gradle Plugin (AGP) 8.x requires **Java 17**.
-
-- **Rule:** The VS Code User `settings.json` file **must** be configured to point directly to a Java 17 JDK. The JDK bundled with Android Studio is the most reliable choice.
-
-  ```json
-  // Example for d:\Development\SinglePingProject\.vscode\settings.json
-  {
-    "java.home": "C:\\Program Files\\Android\\Android Studio\\jbr"
-  }
-  ```
-- **Key Takeaway:** Do not rely on the system's default Java version. Explicitly configure the IDE for the project's specific requirements.
-
----
-
-## 4. Code Quality and Linting
-
-### The Guideline: Treat Lint Warnings as Bugs
-
-The Android lint report (`lint-results-debug.html`) is a critical tool for maintaining code quality. It is not merely informational.
-
-- **Rule:** All warnings identified in the lint report (e.g., outdated dependencies, unused resources, manifest issues, etc.) **must** be treated as high-priority tasks.
-- **Action:** Fix all lint warnings to improve app stability, performance, and maintainability before considering a feature complete.
-
-### Kotlin Type Safety (Added 8/22/2025)
-
-#### The Problem: Type Mismatches in Mathematical Operations
-Kotlin is strict about type safety. Mixing `Double` and `Float` types in calculations will cause compilation failures.
-
-#### Example Issue from MotoApp:
-```kotlin
-// WRONG - Math.random() returns Double, but we're adding to Float
-val noise = (Math.random() - 0.5) * 0.6
-return (distance + noise).coerceIn(0.1f, 50f)  // Type mismatch error!
-
-// CORRECT - Explicitly cast to Float
-val noise = ((Math.random() - 0.5) * 0.6).toFloat()
-return (distance + noise).coerceIn(0.1f, 50f)
+### Gradle Configuration
+Fixed JVM memory issues in gradle.properties:
+```
+org.gradle.jvmargs=-Xmx2048m -Xms512m -XX:MaxMetaspaceSize=512m
 ```
 
-#### **Rule: Be explicit with numeric type conversions**
-- **DO:** Use `.toFloat()`, `.toDouble()`, etc. when mixing numeric types
-- **DO:** Use type-specific literals (e.g., `2.0f` for Float, `2.0` for Double)
-- **DON'T:** Assume automatic type coercion like in Java
+### Nordic BLE Library Integration
+Successfully integrated Nordic Android BLE Library v2.7.0 for robust BLE operations.
 
----
+### Simulated Mode Success
+Implemented beautiful sine wave RSSI data generation in simulation mode for testing without hardware.
 
-## 5. Build Automation and Project Rules
+## Key Files Modified
 
-### The Mandate: Automate All Rules
+### AndroidManifest.xml
+- Added ACCESS_FINE_LOCATION and ACCESS_COARSE_LOCATION for all Android versions
+- Kept all Bluetooth permissions for Android 12+
 
-The `rules.txt` file defines mandatory project processes, such as archiving build artifacts.
+### MainActivity.kt
+- Fixed permission request logic to include location for Android 12+
+- Removed non-existent initialize() and cleanup() method calls
+- Proper permission callback handling
 
-- **Rule:** Any rule related to the build process **must** be automated directly within the corresponding build script (`build_firmware.sh`, `build_android.sh`).
-- **Implementation:** The scripts have been updated with `archive_firmware()` and `archive_apk()` functions to enforce the versioning and copying of compiled code automatically.
-- **Key Takeaway:** This is the only way to guarantee 100% compliance. The `rules.txt` file documents the *why*, and the scripts automate the *how*.
+### MainScreen.kt
+- Enhanced connection UI with status display
+- Added helper functions for time formatting and color coding
+- Improved connection button states
 
----
+### DebugScreen.kt
+- Added comprehensive permission status display
+- Service UUID parsing and detection
+- Enhanced device listing with color coding
 
-## 6. Android Resource Management (Added 8/22/2025)
+### BleScanner.kt
+- Removed UUID filtering to find all devices
+- Added comprehensive logging
+- Proper timeout handling
 
-### The Problem: Missing Launcher Icons Cause Build Failures
+## Testing Results
+- Simulated mode: Working perfectly with sine wave RSSI data
+- BLE scanning: Successfully detects all BLE devices after permission fix
+- Permission system: Properly requests and handles all required permissions
 
-Android apps require launcher icons referenced in `AndroidManifest.xml`. Missing these resources results in AAPT (Android Asset Packaging Tool) errors during the build process.
+## Next Steps for Development
+1. Test real BLE connection with Host device
+2. Implement background service for continuous operation
+3. Add auto-reconnection logic
+4. Implement data logging features
 
-### The Solution: Adaptive Icons with Vector Drawables
+## August 23, 2025 - Host Firmware Build Success
 
-Modern Android apps should use adaptive icons that work across different device shapes and themes:
+### Critical Issue Resolved: PowerShell Execution Policy
+**Problem**: Build scripts for Host firmware failed with execution policy errors when trying to run .ps1 files directly.
 
-1. **Create vector drawable foreground** (`res/drawable/ic_launcher_foreground.xml`)
-2. **Define adaptive icon XML** (`res/mipmap-anydpi-v26/ic_launcher.xml` and `ic_launcher_round.xml`)
-3. **Add background color** to `res/values/colors.xml`
+**Root Cause**: Windows PowerShell execution policy blocking script execution
+- Standard approaches like `-ExecutionPolicy Bypass` weren't working consistently
+- File replacement strategies in build scripts caused CMake configuration issues
 
-#### Example Adaptive Icon Structure:
-```xml
-<!-- res/mipmap-anydpi-v26/ic_launcher.xml -->
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
-</adaptive-icon>
+**Solution**: Use `Invoke-Expression` to execute script content directly
+```powershell
+cd Host/host_device && powershell -Command "Invoke-Expression (Get-Content ./build.ps1 -Raw)"
 ```
 
-#### **Rule: Always create launcher icons before first build**
-- **DO:** Use adaptive icons for Android 8.0+ compatibility
-- **DO:** Use vector drawables for scalability
-- **DON'T:** Reference non-existent mipmap resources in AndroidManifest.xml
-- **QUICK FIX:** Create placeholder icons if design assets aren't ready
+This approach:
+- Reads the script content as text
+- Executes it directly without running the .ps1 file
+- Bypasses execution policy restrictions
+- Works reliably for both regular and test builds
 
----
+### Host Firmware v2 Test Build (rev015)
+Successfully built test firmware with critical fixes:
 
-## 7. Dependency Management Best Practices (Added 8/22/2025)
+**Fixed Issues from rev014**:
+1. **LED3 Turn-off**: Added monitor timer that checks streaming state every second
+2. **RSSI Data Transmission**: Fixed GATT characteristic attribute indexing
 
-### The Problem: Alpha/Beta Library Versions Cause Build Failures
+**Key Code Changes**:
+- `main.c`: Added monitor timer to ensure LED3 turns off when streaming stops
+- `ble_peripheral.c`: Corrected RSSI characteristic attribute pointer (index 2)
 
-During MotoApp development, the Vico charting library (alpha version 2.0.0-alpha.19) caused dependency resolution failures and build issues.
+**Build Process**:
+1. Source files already contained v2 fixes (no file replacement needed)
+2. Used regular build.ps1 with Invoke-Expression
+3. Manually renamed output to rev015 naming convention
+4. File size: 882 KB
 
-### The Solution: Prefer Stable Libraries or Custom Implementations
+### Key Learning: PowerShell Script Execution
+When facing PowerShell execution policy issues:
+1. Don't rely on `-ExecutionPolicy Bypass` flag alone
+2. Use `Invoke-Expression (Get-Content ./script.ps1 -Raw)` for reliable execution
+3. Avoid complex file replacement strategies during build
+4. Keep source files updated rather than replacing during build
 
-When the Vico library failed, a custom Canvas-based graph implementation was created instead, which:
-- Eliminated external dependency issues
-- Provided full control over the visualization
-- Reduced APK size
-- Improved build reliability
+### nRF Connect SDK Environment
+Successfully using:
+- nRF Connect SDK v3.1.0
+- Zephyr RTOS
+- CMake/Ninja build system
+- Board: nrf54l15dk/nrf54l15/cpuapp
 
-#### **Rule: Avoid alpha/beta dependencies in production code**
-- **DO:** Use stable library versions whenever possible
-- **DO:** Consider custom implementations for simple visualizations
-- **DO:** Test dependency updates in isolation before committing
-- **DON'T:** Use alpha/beta libraries unless absolutely necessary
-- **FALLBACK:** If unstable libraries are required, document the risks and have a backup plan
+### Build Commands That Work
+```powershell
+# For regular Host firmware build
+cd Host/host_device && powershell -Command "Invoke-Expression (Get-Content ./build.ps1 -Raw)"
 
-### Example: Custom Graph Implementation
-Instead of complex charting libraries, a simple Canvas-based solution often suffices:
-```kotlin
-Canvas(modifier = Modifier.fillMaxSize()) {
-    // Draw grid, axes, and data points directly
-    // Full control, no dependency issues
+# Copy and rename for versioning
+cp Host/host_device/build/zephyr/zephyr.hex compiled_code/host_device_[description]_[date]_rev[XXX].hex
+```
+
+### Testing Next Steps
+1. Flash rev015 to test LED3 turn-off fix
+2. Verify RSSI data transmission with MotoApp v3.5
+3. Confirm streaming start/stop behavior
+4. Monitor LED states during connection cycles
+
+## August 23, 2025 - Major Milestone: BLE Data Flow Established
+
+### Host Firmware Test v5 (rev018) - Complete Success
+**Problem Solved**: Fixed RSSI data (-55 dBm test value) now flowing from Host to MotoApp!
+
+**Issues Fixed from v4**:
+1. **LED2 incorrectly lighting**: Was simulating Mipe connection on MotoApp connect
+2. **Streaming not triggered**: Was starting immediately on connection instead of waiting for control command
+3. **Command logic missing**: Control commands from MotoApp weren't triggering RSSI generation
+
+**Root Cause Analysis**:
+- v4 called `ble_central_start_scan()` in connection callback (wrong timing)
+- Set `mipe_connected = true` when it should stay false in test mode
+- Data stream callback wasn't properly starting RSSI generation
+
+**Solution in v5**:
+```c
+static void data_stream_callback(bool start)
+{
+    data_streaming = start;
+    
+    if (start) {
+        LOG_INF("=== DATA STREAMING STARTED ===");
+        LOG_INF("Control command received from MotoApp");
+        gpio_pin_set_dt(&led3, 1); /* Turn ON streaming LED */
+        
+        /* NOW start the simulated RSSI generation */
+        LOG_INF("Starting simulated RSSI generation...");
+        int err = ble_central_start_scan();  /* This starts the RSSI timer */
+    }
 }
 ```
 
----
+**Build Command**:
+```bash
+cd Host/host_device && powershell -ExecutionPolicy Bypass -File build_test_fixed_rssi_v5.ps1
+```
 
-## 8. Terminal Compatibility for Cross-Platform Development (Added 8/22/2025)
+**Results**:
+- ✅ LED1 only lights when MotoApp connects (LED2 stays off)
+- ✅ LED3 turns on when "Start Streaming" pressed
+- ✅ RSSI data flows to MotoApp when streaming active
+- ✅ LED3 turns off when "Stop Streaming" pressed
 
-### The Problem: PowerShell vs Bash Command Incompatibility
+### Git Version Control Strategy Implemented
 
-During MotoApp development, commands that worked in PowerShell failed when the terminal switched to Git Bash (MINGW64). For example:
-- PowerShell: `Get-Process | Where-Object {$_.ProcessName -like "*java*"}`
-- Git Bash: `ps aux | grep -E "java|gradle"`
+**Created comprehensive versioning system**:
+1. **GIT_VERSION_STRATEGY.md** - Complete branching and tagging documentation
+2. **setup_git_versioning.ps1** - Automated script for milestone tagging
 
-### The Solution: Use Git Bash for Gradle Commands
+**Branching Strategy**:
+- `main` - Stable releases only
+- `develop` - Integration branch
+- `feature/*` - Feature branches
+- `test/*` - Test/debug branches
+- `release/*` - Release preparation
 
-Git Bash (MINGW64) provides better compatibility with Gradle wrapper scripts and Unix-style commands commonly used in Android development.
+**Tagging Format**:
+- Firmware: `firmware/host-v{version}-rev{revision}`
+- Apps: `app/motoapp-v{version}`
+- Milestones: `milestone/{description}-{date}`
 
-#### **Rule: Use Git Bash for Android/Gradle builds on Windows**
-- **DO:** Use Git Bash (MINGW64) for running `./gradlew` commands
-- **DO:** Use Unix-style commands (`ls`, `cp`, `mkdir -p`) in Git Bash
-- **DON'T:** Mix PowerShell and Bash commands in the same session
-- **TIP:** VS Code may switch terminals automatically - check the prompt
+**Current Milestone Tags**:
+- `milestone/ble-data-flow-working-20250823`
+- `firmware/host-test-v5-rev018`
+- `app/motoapp-v3.5`
 
-### Terminal Identification:
-- **PowerShell:** Prompt shows `PS C:\path>`
-- **Git Bash:** Prompt shows `user@COMPUTER MINGW64 /c/path`
-- **Command Prompt:** Prompt shows `C:\path>`
+**Implementation**:
+```bash
+# Run automated setup
+powershell -ExecutionPolicy Bypass -File setup_git_versioning.ps1
 
----
+# Or manual commands
+git add -A
+git commit -m "milestone: BLE data flow established between Host and MotoApp"
+git tag -a milestone/ble-data-flow-working-20250823 -m "BLE data flow milestone"
+git push origin --all --tags
+```
 
-## 9. Troubleshooting Build Issues (Added 8/22/2025)
+### Key Learning: Command-Based Streaming Control
+The Host firmware must wait for explicit control commands from MotoApp:
+- CMD_START_STREAM (0x01) - Start data transmission
+- CMD_STOP_STREAM (0x02) - Stop data transmission
+- Don't start streaming on connection - wait for user action
 
-### Common Android Build Problems and Solutions
+### Current Working State
+- **Host Firmware**: v5 test (rev018) with fixed RSSI @ -55 dBm
+- **MotoApp**: v3.5 with full BLE support
+- **Status**: Complete BLE communication pipeline established
+- **Data Flow**: Host → MotoApp working with proper control
 
-#### Problem: Build Hangs Indefinitely
-**Symptoms:** Gradle process runs but makes no progress
-**Solution:** 
-1. Kill Java/Gradle processes: `Stop-Process -Name java -Force`
-2. Clear Gradle cache: `./gradlew clean`
-3. Increase memory in `gradle.properties`
-4. Check daemon logs for errors
+### Next Development Steps
+1. Implement real Mipe device scanning and connection
+2. Add dual-role BLE (Host as Central to Mipe, Peripheral to MotoApp)
+3. Replace fixed RSSI with actual Mipe device readings
+4. Add LED2 indication for real Mipe connections
 
-#### Problem: "Could not resolve dependencies"
-**Symptoms:** Gradle cannot download or resolve library dependencies
-**Solution:**
-1. Check internet connectivity
-2. Try offline mode if dependencies are cached: `./gradlew assembleDebug --offline`
-3. Clear dependency cache: `rm -rf ~/.gradle/caches/`
-4. Verify repository URLs in `build.gradle`
+## August 23, 2025 - Universal Build Script Implementation
 
-#### Problem: Resource Compilation Errors
-**Symptoms:** AAPT errors about missing resources
-**Solution:**
-1. Verify all referenced resources exist
-2. Check for typos in resource names
-3. Ensure proper resource qualifiers (e.g., `-v26` for API 26+)
-4. Clean and rebuild: `./gradlew clean assembleDebug`
+### Critical Issue Resolved: Build Script Proliferation
+**Problem**: Creating a new build script for each test version (v1, v2, v3, etc.) was causing unnecessary complexity and confusion.
 
-### **Rule: Document and share build issue solutions**
-- **DO:** Keep logs of build errors and their solutions
-- **DO:** Update this document when new issues are discovered
-- **DO:** Check build reports at `build/reports/` for detailed error information
-- **DON'T:** Ignore warning messages - they often precede failures
+**Root Cause**: 
+- Each version had its own build script with slight variations
+- No consistent pattern was being followed
+- File replacement strategies were inconsistent
+- Too many different approaches tried (cmake manipulation, file patching, etc.)
 
----
+**Solution**: Created `build_test_universal.ps1` - a single parameterized script for all test builds
 
-## Summary of Critical Rules
+### Universal Build Script Features
+**Script**: `Host/host_device/build_test_universal.ps1`
 
-1. **Memory Configuration is Mandatory** - Always configure Gradle JVM memory settings
-2. **Type Safety is Non-Negotiable** - Be explicit with Kotlin type conversions
-3. **Resources Must Exist** - Create all referenced resources before building
-4. **Prefer Stable Dependencies** - Avoid alpha/beta libraries in production
-5. **Document Everything** - Update this guide with new discoveries
-6. **Automate Compliance** - Build scripts must enforce all project rules
+**Usage**:
+```powershell
+# Build any test version with simple parameters
+.\build_test_universal.ps1 -Version 6 -Description "alternating rssi" -RevNumber 019
+.\build_test_universal.ps1 -Version 7 -Description "new feature" -RevNumber 020
+```
 
-This document is a living guide. Update it whenever new build issues are encountered and resolved.
+**What it does**:
+1. Sets up environment (same every time)
+2. Backs up current files
+3. Copies test version to main.c
+4. Copies test BLE central
+5. Runs cmake and ninja build
+6. Copies hex to compiled_code with descriptive naming
+7. Restores original files
+
+**Benefits**:
+- No more creating individual build scripts
+- Consistent build process
+- Automatic file naming and versioning
+- Simple parameter-based operation
+
+### Host Firmware Test v6 (rev019) - Alternating RSSI
+**Features Implemented**:
+- Alternates between fixed -55 dBm reference and simulated real RSSI
+- LED3 flashes for fixed reference values
+- LED2 flashes for real RSSI values
+- Packet counter for status reporting
+
+**Build Process** (now simplified):
+```powershell
+# Just run the universal script!
+cd Host/host_device
+.\build_test_universal.ps1 -Version 6 -Description "alternating rssi" -RevNumber 019
+```
+
+**Key Learning**: Don't create a new build script for each version!
+- Use a parameterized universal script
+- Keep the build process consistent
+- Focus on changing the source code, not the build process
+
+### Build Workflow Simplified
+**Old Complex Way**:
+1. Create new build script for each version
+2. Try different approaches (cmake, patching, etc.)
+3. Debug build script issues
+4. Eventually get it working
+
+**New Simple Way**:
+1. Create test source: `src/main_test_fixed_rssi_vX.c`
+2. Run: `.\build_test_universal.ps1 -Version X -Description "feature" -RevNumber XXX`
+3. Done!
+
+### Current Build Tools
+- **Universal Test Build**: `build_test_universal.ps1`
+- **Regular Build**: `build.ps1` (for production firmware)
+- **Environment**: nRF Connect SDK v3.1.0, CMake, Ninja
+
+### Documentation Created
+- `BUILD_INSTRUCTIONS.md` - Complete guide to using universal build script
+- Clear examples and explanations
+- No more confusion about which script to use

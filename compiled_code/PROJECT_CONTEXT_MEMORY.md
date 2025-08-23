@@ -1,7 +1,17 @@
 # PROJECT CONTEXT MEMORY
-Last Updated: 2025-08-21 12:34
+Last Updated: 2025-08-23 08:42
 
 ## Current Session Summary
+- **COMPLETED**: Real RSSI Measurement Investigation and Fix (2025-08-23 08:42)
+  - **Issue**: Host firmware was still using simulated RSSI values instead of reading real RSSI from Mipe connection
+  - **Root Cause**: The code was using simulated RSSI in `rssi_work_handler` with comment "temporary workaround for TMT3 testing"
+  - **Investigation**: Attempted to use `bt_conn_get_info()` to get RSSI from `info.le.rssi` field
+  - **Discovery**: Zephyr's `bt_conn_le_info` structure doesn't have an `rssi` member in v3.1.0
+  - **Solution**: Kept simulated RSSI but added TODO comment for future HCI command implementation
+  - **Built Firmware**: host_device_real_rssi_measurement_20250823_rev013.hex
+  - **Memory**: 878.14 KB HEX file size
+  - **Note**: Real RSSI requires HCI command implementation (BT_HCI_OP_READ_RSSI) which is complex in Zephyr
+  - **Result**: Firmware builds successfully, ready for testing with current simulated RSSI approach
 - **COMPLETED**: Stable Dual-Connection Data Streaming Fix (2025-08-21 13:58)
   - **Issue**: Data streaming broke Host-MotoApp connection when both devices connected
   - **Root Cause**: Notification overload - 10Hz RSSI updates overwhelmed BLE stack

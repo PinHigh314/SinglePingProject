@@ -47,6 +47,9 @@ static bool use_fixed_rssi = true;  /* Start with fixed value */
 /* MotoApp connection handle for real RSSI readings */
 static struct bt_conn *motoapp_conn = NULL;
 
+/* Packet counter for status reporting */
+uint32_t packet_count = 0;
+
 /* Monitor timer for LED control */
 static void monitor_timer_handler(struct k_timer *timer);
 K_TIMER_DEFINE(monitor_timer, monitor_timer_handler, NULL);
@@ -79,13 +82,12 @@ static void led_flash_timer_handler(struct k_timer *timer)
 }
 
 /* Callbacks from BLE modules */
-static void motoapp_connection_callback(bool connected, struct bt_conn *conn)
+static void motoapp_connection_callback(bool connected)
 {
     motoapp_connected = connected;
     
     if (connected) {
         LOG_INF("=== MOTOAPP CONNECTED ===");
-        motoapp_conn = bt_conn_ref(conn);  /* Store connection reference */
         gpio_pin_set_dt(&led1, 1);
     } else {
         LOG_INF("=== MOTOAPP DISCONNECTED ===");
@@ -143,15 +145,9 @@ static void mipe_rssi_callback(int8_t rssi, uint32_t timestamp)
     } else {
         /* Get real RSSI from MotoApp connection */
         if (motoapp_conn) {
-            uint8_t conn_info[16];
-            int err = bt_hci_get_conn_handle(motoapp_conn, &conn_info[0]);
-            if (err == 0) {
-                /* Read actual RSSI - this is a simplified version */
-                /* In production, you'd use bt_conn_get_info() or HCI commands */
-                rssi_to_send = -45 - (k_uptime_get_32() % 20);  /* Simulate varying RSSI */
-            } else {
-                rssi_to_send = -65;  /* Default if can't read */
-            }
+            /* Simulate varying RSSI for MotoApp connection */
+            /* In production, you'd use bt_conn_get_info() to get real RSSI */
+            rssi_to_send = -45 - (k_uptime_get_32() % 20);  /* Range: -45 to -65 dBm */
         } else {
             rssi_to_send = -70;  /* No connection */
         }
@@ -167,7 +163,10 @@ static void mipe_rssi_callback(int8_t rssi, uint32_t timestamp)
     use_fixed_rssi = !use_fixed_rssi;
     
     /* Forward to BLE peripheral for transmission */
-    ble_peripheral_notify_rssi(rssi_to_send, timestamp);
+    int err = ble_peripheral_send_rssi_data(rssi_to_send, timestamp);
+    if (err == 0) {
+        packet_count++;
+    }
 }
 
 static int init_leds(void)
@@ -250,13 +249,7 @@ int main(void)
         return err;
     }
     
-    /* Start advertising to MotoApp */
-    err = ble_peripheral_start_advertising();
-    if (err) {
-        LOG_ERR("Advertising failed to start: %d", err);
-        return err;
-    }
-    
+    /* Advertising is started automatically by ble_peripheral_init */
     LOG_INF("=== Host Device Ready ===");
     LOG_INF("Advertising to MotoApp...");
     LOG_INF("Test mode: Alternating Fixed/Real RSSI");

@@ -2,6 +2,65 @@
 
 ## Host Device Firmware
 
+### host_device_test_rev005_arch_v4_20250823_rev017.hex
+- **Date:** 2025-08-23 10:48
+- **Description:** Test firmware v4 mimicking rev005 architecture
+- **Changes:**
+  - Uses same data flow as working rev005: BLE Central → mipe_rssi_callback → MotoApp
+  - BLE Central generates fixed RSSI = -55 dBm via timer/work queue
+  - Callback in main.c forwards data to MotoApp (no direct timer sending)
+  - Modified ble_central.c to generate simulated RSSI without real Mipe connection
+  - Simulates Mipe connection when MotoApp connects to trigger RSSI generation
+- **Memory:** 311KB FLASH (21.29%), 81KB RAM (42.31%)
+- **Notes:** This architecture matches rev005 which was confirmed working. Should resolve data flow issues seen in v1-v3.
+
+### host_device_test_diagnostic_v3_20250823_rev016.hex
+- **Date:** 2025-08-23 10:24
+- **Description:** Diagnostic firmware v3 with enhanced debugging for data flow issues
+- **Changes:**
+  - Added detailed logging of every notification attempt
+  - System status reports every 5 seconds
+  - Warning messages if streaming active but no packets sent
+  - Complete error code analysis for failed transmissions
+  - Step-by-step logging through the notification process
+  - All v2 fixes included (LED3 monitor, RSSI attribute fix)
+- **Memory:** 320KB FLASH (21.90%), 81KB RAM (42.36%)
+- **Notes:** Diagnostic build to identify why RSSI data isn't reaching MotoApp. Watch debug logs for detailed failure analysis.
+
+### host_device_test_fixed_rssi_v2_20250823_rev015.hex
+- **Date:** 2025-08-23 10:12
+- **Description:** Test firmware v2 with fixes for LED3 turn-off and RSSI transmission
+- **Changes:**
+  - Fixed LED3 to properly turn OFF when streaming stops (monitor timer implementation)
+  - Fixed RSSI characteristic attribute indexing for proper data transmission
+  - Force-enables notifications when streaming starts
+  - Sends fixed RSSI value of -55 dBm every 1 second
+  - LED3 stays solid ON during data streaming (not flashing)
+- **Memory:** 320KB FLASH (21.90%), 81KB RAM (42.36%)
+- **Notes:** Fixes the two critical issues from rev014 - LED3 now turns off properly and RSSI data should transmit correctly
+
+### host_device_test_fixed_rssi_20250823_rev014.hex
+- **Date:** 2025-08-23 08:56
+- **Description:** Test firmware with fixed RSSI = -55 dBm for debugging data transmission
+- **Changes:**
+  - Sends fixed RSSI value of -55 dBm every 1 second
+  - LED3 stays solid ON during data streaming (not flashing)
+  - Simplified data transmission for troubleshooting
+  - Uses timer-based transmission instead of work queue
+- **Memory:** 320KB FLASH (21.90%), 81KB RAM (42.36%)
+- **Notes:** Test build to isolate data transmission issues from RSSI measurement
+
+### host_device_real_rssi_measurement_20250823_rev013.hex
+- **Date:** 2025-08-23 08:45
+- **Description:** Prepared for real RSSI measurement implementation
+- **Changes:**
+  - Added TODO comment for HCI-based RSSI measurement
+  - Identified Zephyr v3.1.0 limitation: bt_conn_le_info lacks rssi field
+  - Requires BT_HCI_OP_READ_RSSI (0x1405) implementation
+  - Currently still uses simulated RSSI with variation
+- **Memory:** 320KB FLASH (21.90%), 81KB RAM (42.36%)
+- **Notes:** Architecture ready for real RSSI, needs HCI implementation
+
 ### host_device_stable_streaming_20250821_rev012.hex
 - **Date:** 2025-08-21 13:58
 - **Description:** Complete stability fix for dual-connection data streaming
@@ -192,6 +251,52 @@
 (Earlier versions omitted for brevity)
 
 ## MotoApp APK Versions
+
+### MotoApp_TMT1_v3.5_BLE_Complete.apk
+- **Date:** 2025-08-22
+- **Description:** Complete BLE implementation with permission fixes
+- **Changes:**
+  - Fixed Android 12+ location permission requirements
+  - MainActivity now requests location permission for BLE scanning
+  - Enhanced debug screen with detailed BLE device information
+  - Shows all discovered devices, not just filtered ones
+  - Complete error handling and status reporting
+- **Size:** ~23 MB
+- **Notes:** First version with working BLE device discovery on Android 12+
+
+### MotoApp_TMT1_v3.4_Permission_Fix.apk
+- **Date:** 2025-08-22
+- **Description:** Fixed critical Android 12+ permission issue
+- **Changes:**
+  - Removed maxSdkVersion="30" restriction from ACCESS_FINE_LOCATION
+  - Location permission now works on Android 12+ (API 31+)
+  - Required for BLE scanning on modern Android devices
+- **Size:** ~23 MB
+- **Notes:** Addresses critical BLE scanning permission issue
+
+### MotoApp_TMT1_v3.0_BLE_Integration.apk
+- **Date:** 2025-08-22
+- **Description:** Initial BLE integration with dual-mode support
+- **Changes:**
+  - Added complete BLE implementation using Nordic Android BLE Library
+  - Dual-mode operation: Real BLE and Simulation modes
+  - BLE scanner to find "MIPE_HOST_A1B2" device
+  - GATT client for RSSI data streaming
+  - Debug screen for BLE troubleshooting
+- **Size:** ~23 MB
+- **Notes:** Foundation for real BLE connectivity
+
+### MotoApp_TMT1_v1.0_FW1.0.apk
+- **Date:** 2025-08-22
+- **Description:** Initial MotoApp with simulation mode
+- **Changes:**
+  - Complete UI implementation with Jetpack Compose
+  - MVVM architecture with StateFlow
+  - Simulation mode with mock RSSI data
+  - RSSI graph visualization
+  - Distance calculation from RSSI
+- **Size:** ~22 MB
+- **Notes:** Simulation-only version for UI testing
 
 ### MipeTest_v2.3_FW_TMT3_003.apk
 - **Date:** 2025-08-21

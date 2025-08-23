@@ -1,7 +1,6 @@
 /*
  * Copyright (c) 2024 Nordic Semiconductor ASA
- * TMT1 BLE Peripheral implementation for MotoApp communication
- * FIXED VERSION: Corrected RSSI notification attribute index
+ * BLE Peripheral implementation for v8 - Extended API
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -16,7 +15,7 @@
 
 #include "ble_peripheral.h"
 
-LOG_MODULE_REGISTER(ble_peripheral, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(ble_peripheral_v8, LOG_LEVEL_INF);
 
 /* TMT1 Service UUID: 12345678-1234-5678-1234-56789abcdef0 */
 #define TMT1_SERVICE_UUID BT_UUID_DECLARE_128( \
@@ -41,12 +40,15 @@ LOG_MODULE_REGISTER(ble_peripheral, LOG_LEVEL_INF);
 
 /* Connection state */
 static struct bt_conn *current_conn = NULL;
-static ble_connection_cb_t connection_callback = NULL;
-static data_stream_cb_t stream_callback = NULL;
-
-/* GATT notification parameters */
 static bool rssi_notify_enabled = false;
-static struct bt_gatt_indicate_params rssi_ind_params;
+static bool streaming_active = false;
+static uint32_t packet_count = 0;
+
+/* Callbacks - Extended API for v8 */
+static void (*app_connected_cb)(void) = NULL;
+static void (*app_disconnected_cb)(void) = NULL;
+static void (*streaming_state_cb)(bool active) = NULL;
+static int (*get_rssi_data_cb)(int8_t *rssi, uint32_t *timestamp) = NULL;
 
 /* Status data */
 static uint8_t host_status[8] = {0}; /* Status response buffer */
@@ -107,44 +109,73 @@ static const struct bt_data sd[] = {
     BT_DATA(BT_DATA_NAME_COMPLETE, "MIPE_HOST_A1B2", 14),
 };
 
-/* Advertising parameters */
-static struct bt_le_adv_param adv_param = BT_LE_ADV_PARAM_INIT(
-    BT_LE_ADV_OPT_CONN,
-    BT_GAP_ADV_FAST_INT_MIN_2,
-    BT_GAP_ADV_FAST_INT_MAX_2,
-    NULL);
+/* Data transmission work and timer */
+static struct k_work tx_work;
+static struct k_timer tx_timer;
 
-int ble_peripheral_init(ble_connection_cb_t conn_cb, data_stream_cb_t stream_cb)
+static void tx_work_handler(struct k_work *work)
 {
+    int8_t rssi;
+    uint32_t timestamp;
     int err;
 
-    LOG_INF("Initializing BLE Peripheral for TMT1");
+    if (!streaming_active || !get_rssi_data_cb) {
+        return;
+    }
 
-    connection_callback = conn_cb;
-    stream_callback = stream_cb;
+    /* Get RSSI data from callback */
+    err = get_rssi_data_cb(&rssi, &timestamp);
+    if (err) {
+        return;
+    }
+
+    /* Send the data */
+    err = ble_peripheral_send_rssi_data(rssi, timestamp);
+    if (err == 0) {
+        packet_count++;
+    }
+}
+
+static void tx_timer_handler(struct k_timer *timer)
+{
+    k_work_submit(&tx_work);
+}
+
+/* Extended API initialization */
+int ble_peripheral_init(void (*conn_cb)(void), void (*disconn_cb)(void),
+                       void (*stream_cb)(bool), int (*rssi_cb)(int8_t*, uint32_t*))
+{
+    LOG_INF("Initializing BLE Peripheral v8 for Host");
+
+    app_connected_cb = conn_cb;
+    app_disconnected_cb = disconn_cb;
+    streaming_state_cb = stream_cb;
+    get_rssi_data_cb = rssi_cb;
 
     /* Find and store the RSSI characteristic attribute */
-    /* Service attrs[0] = Primary Service
-     * Service attrs[1] = RSSI Characteristic Declaration
-     * Service attrs[2] = RSSI Characteristic Value <-- This is what we need
-     * Service attrs[3] = RSSI CCC
-     */
     rssi_char_attr = &tmt1_service.attrs[2];
     LOG_INF("RSSI characteristic attribute stored at index 2");
 
-    /* Initialize Bluetooth */
-    err = bt_enable(NULL);
-    if (err) {
-        LOG_ERR("Bluetooth init failed (err %d)", err);
-        return err;
-    }
+    /* Initialize work and timer */
+    k_work_init(&tx_work, tx_work_handler);
+    k_timer_init(&tx_timer, tx_timer_handler, NULL);
 
-    LOG_INF("Bluetooth initialized");
+    LOG_INF("BLE Peripheral v8 initialized");
+    return 0;
+}
 
-    /* Start advertising with new API */
-    err = bt_le_adv_start(&adv_param,
-                         ad, ARRAY_SIZE(ad),
-                         sd, ARRAY_SIZE(sd));
+int ble_peripheral_start_advertising(void)
+{
+    int err;
+
+    /* Advertising parameters */
+    struct bt_le_adv_param adv_param = BT_LE_ADV_PARAM_INIT(
+        BT_LE_ADV_OPT_CONN,
+        BT_GAP_ADV_FAST_INT_MIN_2,
+        BT_GAP_ADV_FAST_INT_MAX_2,
+        NULL);
+
+    err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
     if (err) {
         LOG_ERR("Advertising failed to start (err %d)", err);
         return err;
@@ -178,8 +209,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
     current_conn = bt_conn_ref(conn);
     
     /* Notify application of connection */
-    if (connection_callback) {
-        connection_callback(true);
+    if (app_connected_cb) {
+        app_connected_cb();
     }
 }
 
@@ -188,7 +219,6 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     char addr[BT_ADDR_LE_STR_LEN];
     struct bt_conn_info info;
     int err;
-    int retry_count = 0;
 
     bt_conn_get_info(conn, &info);
     
@@ -201,50 +231,28 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
     LOG_INF("MotoApp Disconnected: %s (reason 0x%02x)", addr, reason);
 
-    /* Clear connection state BEFORE notification */
+    /* Clear connection state */
     if (current_conn == conn) {
         bt_conn_unref(current_conn);
         current_conn = NULL;
     }
 
     rssi_notify_enabled = false;
+    streaming_active = false;
+    
+    /* Stop transmission timer */
+    k_timer_stop(&tx_timer);
 
     /* Notify application of disconnection */
-    if (connection_callback) {
-        connection_callback(false);
+    if (app_disconnected_cb) {
+        app_disconnected_cb();
     }
 
-    /* Ensure advertising is fully stopped */
-    err = bt_le_adv_stop();
-    if (err && err != -EALREADY) {
-        LOG_WRN("Failed to stop advertising: %d", err);
-    }
-    
-    /* Wait for BLE stack to stabilize */
+    /* Restart advertising */
     k_msleep(250);
-
-    /* Try to restart advertising with retries */
-    while (retry_count < 5) {
-        err = bt_le_adv_start(&adv_param,
-                              ad, ARRAY_SIZE(ad),
-                              sd, ARRAY_SIZE(sd));
-        
-        if (err == 0) {
-            LOG_INF("Advertising restarted successfully (attempt %d)", retry_count + 1);
-            break;
-        } else if (err == -EALREADY) {
-            LOG_WRN("Advertising already active, stopping and retrying");
-            bt_le_adv_stop();
-            k_msleep(100);
-        } else {
-            LOG_ERR("Failed to restart advertising (err %d, attempt %d)", err, retry_count + 1);
-            k_msleep(200 * (retry_count + 1)); /* Progressive backoff */
-        }
-        retry_count++;
-    }
-    
-    if (retry_count >= 5) {
-        LOG_ERR("Failed to restart advertising after 5 attempts - BLE may need reset");
+    err = ble_peripheral_start_advertising();
+    if (err) {
+        LOG_ERR("Failed to restart advertising: %d", err);
     }
 }
 
@@ -261,26 +269,32 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
 
     switch (data[0]) {
     case CMD_START_STREAM:
-        /* Force enable notifications when starting stream */
         rssi_notify_enabled = true;
-        LOG_INF("Force enabled RSSI notifications for streaming");
+        streaming_active = true;
         
-        if (stream_callback) {
-            stream_callback(true);
+        /* Start transmission timer at 10Hz */
+        k_timer_start(&tx_timer, K_NO_WAIT, K_MSEC(100));
+        
+        if (streaming_state_cb) {
+            streaming_state_cb(true);
         }
         LOG_INF("Data streaming started");
         break;
         
     case CMD_STOP_STREAM:
         rssi_notify_enabled = false;
-        if (stream_callback) {
-            stream_callback(false);
+        streaming_active = false;
+        
+        /* Stop transmission timer */
+        k_timer_stop(&tx_timer);
+        
+        if (streaming_state_cb) {
+            streaming_state_cb(false);
         }
         LOG_INF("Data streaming stopped");
         break;
         
     case CMD_GET_STATUS:
-        /* Status will be read via the status characteristic */
         LOG_INF("Status requested");
         break;
         
@@ -297,12 +311,11 @@ static ssize_t status_read(struct bt_conn *conn, const struct bt_gatt_attr *attr
 {
     static uint8_t status_response[8];
     uint32_t uptime = k_uptime_get();
-    uint32_t packets = ble_peripheral_get_packet_count();
 
     /* Build status response */
-    status_response[0] = rssi_notify_enabled ? 1 : 0; /* Streaming status */
+    status_response[0] = streaming_active ? 1 : 0;    /* Streaming status */
     sys_put_le24(uptime, &status_response[1]);        /* Uptime (24-bit ms) */
-    sys_put_le32(packets, &status_response[4]);       /* Packet count */
+    sys_put_le32(packet_count, &status_response[4]);  /* Packet count */
 
     return bt_gatt_attr_read(conn, attr, buf, len, offset,
                             status_response, sizeof(status_response));
@@ -317,8 +330,11 @@ static void rssi_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value
     /* Only update if explicitly disabled via CCC */
     if (!notify_enabled) {
         rssi_notify_enabled = false;
-        if (stream_callback) {
-            stream_callback(false);
+        streaming_active = false;
+        k_timer_stop(&tx_timer);
+        
+        if (streaming_state_cb) {
+            streaming_state_cb(false);
         }
     }
 }
@@ -340,12 +356,6 @@ int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
         return -ENOTCONN;
     }
 
-    /* Ensure we're in connected state */
-    if (info.state != BT_CONN_STATE_CONNECTED) {
-        LOG_WRN("Connection not in connected state: %d", info.state);
-        return -ENOTCONN;
-    }
-
     if (!rssi_notify_enabled) {
         LOG_DBG("Cannot send RSSI - notifications not enabled");
         return -EACCES;
@@ -355,39 +365,21 @@ int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
     rssi_data[0] = (uint8_t)rssi_value;
     sys_put_le24(timestamp & 0xFFFFFF, &rssi_data[1]);
 
-    /* Log the data being sent */
-    LOG_DBG("Sending RSSI packet: value=%d, timestamp=%u", rssi_value, timestamp);
-    LOG_DBG("Packet bytes: 0x%02x 0x%02x 0x%02x 0x%02x", 
-            rssi_data[0], rssi_data[1], rssi_data[2], rssi_data[3]);
-
-    /* Send notification using the stored RSSI characteristic attribute */
+    /* Send notification */
     err = bt_gatt_notify(current_conn, rssi_char_attr, 
-                            rssi_data, sizeof(rssi_data));
+                        rssi_data, sizeof(rssi_data));
     
-    if (err == -ENOMEM) {
-        LOG_WRN("BLE buffer full, dropping RSSI packet");
-        return err;
-    } else if (err == -ENOTCONN) {
-        LOG_ERR("Connection lost during notification");
-        /* Clear connection reference if it's gone */
-        if (current_conn) {
-            bt_conn_unref(current_conn);
-            current_conn = NULL;
-        }
-        return err;
-    } else if (err) {
+    if (err) {
         LOG_ERR("Failed to send RSSI notification (err %d)", err);
         return err;
     }
 
-    LOG_DBG("RSSI notification sent successfully: %d dBm", rssi_value);
+    LOG_DBG("RSSI notification sent: %d dBm", rssi_value);
     return 0;
 }
 
 uint32_t ble_peripheral_get_packet_count(void)
 {
-    /* This will be tracked by main.c */
-    extern uint32_t packet_count;
     return packet_count;
 }
 
@@ -398,5 +390,5 @@ bool ble_peripheral_is_connected(void)
 
 bool ble_peripheral_is_streaming(void)
 {
-    return rssi_notify_enabled;
+    return streaming_active;
 }
