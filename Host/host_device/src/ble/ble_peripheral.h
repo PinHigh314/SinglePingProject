@@ -1,27 +1,35 @@
 /*
  * Copyright (c) 2024 Nordic Semiconductor ASA
- * TMT1 BLE Peripheral header for MotoApp communication
+ * BLE Peripheral header for v8 - Extended API
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef BLE_PERIPHERAL_H
-#define BLE_PERIPHERAL_H
+#ifndef BLE_PERIPHERAL_V8_H
+#define BLE_PERIPHERAL_V8_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Callback types */
-typedef void (*ble_connection_cb_t)(bool connected);
-typedef void (*data_stream_cb_t)(bool start);
-
 /**
- * @brief Initialize BLE Peripheral for TMT1
+ * @brief Initialize BLE Peripheral with extended callbacks for v8
  * 
- * @param conn_cb Connection status callback
- * @param stream_cb Data stream control callback
+ * @param conn_cb Connection callback (called when MotoApp connects)
+ * @param disconn_cb Disconnection callback (called when MotoApp disconnects)
+ * @param stream_cb Streaming state callback (called when streaming starts/stops)
+ * @param rssi_cb RSSI data callback (called to get RSSI data to transmit)
  * @return 0 on success, negative error code on failure
  */
-int ble_peripheral_init(ble_connection_cb_t conn_cb, data_stream_cb_t stream_cb);
+int ble_peripheral_init(void (*conn_cb)(void), 
+                       void (*disconn_cb)(void),
+                       void (*stream_cb)(bool active),
+                       int (*rssi_cb)(int8_t *rssi, uint32_t *timestamp));
+
+/**
+ * @brief Start BLE advertising
+ * 
+ * @return 0 on success, negative error code on failure
+ */
+int ble_peripheral_start_advertising(void);
 
 /**
  * @brief Send RSSI data to MotoApp via BLE notification
@@ -53,4 +61,4 @@ bool ble_peripheral_is_connected(void);
  */
 bool ble_peripheral_is_streaming(void);
 
-#endif /* BLE_PERIPHERAL_H */
+#endif /* BLE_PERIPHERAL_V8_H */

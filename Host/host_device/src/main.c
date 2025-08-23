@@ -1,273 +1,333 @@
 /*
  * Copyright (c) 2024 Nordic Semiconductor ASA
- * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
- * 
- * Host Device Test Firmware v6 - Alternating Fixed/Real RSSI
- * - Alternates between fixed reference (-55) and real RSSI readings
- * - LED3 flashes when transmitting fixed -55 reference
- * - LED2 flashes when transmitting real RSSI from MotoApp connection
- * - LED1 indicates MotoApp connection status
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Host Device Application
+ * - Fixed RSSI test with alternating transmission
+ * - Real Mipe connection with dual connection LED indication
+ * - LED1 rapid flash (100ms) when both MotoApp and Mipe are connected
+ * - Fixed LED1 timing issue to ensure solid ON when only MotoApp connected
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
+#include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/conn.h>
-#include <zephyr/bluetooth/gatt.h>
-#include <zephyr/bluetooth/uuid.h>
-#include <zephyr/bluetooth/addr.h>
-#include <zephyr/sys/byteorder.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/settings/settings.h>
-#include <dk_buttons_and_leds.h>
 
 #include "ble/ble_peripheral.h"
 #include "ble/ble_central.h"
-#include "button_handler.h"
-#include "logger.h"
 
-LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(host_main, LOG_LEVEL_INF);
 
 /* LED definitions */
-#define LED_MOTOAPP DK_LED1    /* MotoApp connection status */
-#define LED_REAL_RSSI DK_LED2  /* Flashes when transmitting real RSSI */
-#define LED_FIXED_RSSI DK_LED3 /* Flashes when transmitting fixed -55 */
+#define LED0_NODE DT_ALIAS(led0)
+#define LED1_NODE DT_ALIAS(led1)
+#define LED2_NODE DT_ALIAS(led2)
+#define LED3_NODE DT_ALIAS(led3)
 
-/* GPIO for LEDs */
-static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
-static const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
-static const struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios);
+static const struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
+static const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(LED2_NODE, gpios);
+static const struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET(LED3_NODE, gpios);
 
 /* Connection states */
 static bool motoapp_connected = false;
-static bool data_streaming = false;
-static bool use_fixed_rssi = true;  /* Start with fixed value */
+static bool mipe_connected = false;
+static bool streaming_active = false;
 
-/* MotoApp connection handle for real RSSI readings */
-static struct bt_conn *motoapp_conn = NULL;
+/* Timers */
+static struct k_timer heartbeat_timer;
+static struct k_timer led_flash_timer;
+static struct k_timer led1_rapid_flash_timer;
 
-/* Monitor timer for LED control */
-static void monitor_timer_handler(struct k_timer *timer);
-K_TIMER_DEFINE(monitor_timer, monitor_timer_handler, NULL);
+/* RSSI alternation flag */
+static bool use_fixed_rssi = true;
 
-/* LED flash timer for visual feedback */
-static void led_flash_timer_handler(struct k_timer *timer);
-K_TIMER_DEFINE(led_flash_timer, led_flash_timer_handler, NULL);
+/* Latest RSSI from Mipe */
+static int8_t latest_mipe_rssi = -70;
+static uint32_t latest_mipe_timestamp = 0;
 
-static void monitor_timer_handler(struct k_timer *timer)
+/* Timer handlers */
+static void heartbeat_timer_handler(struct k_timer *timer)
 {
-    /* LED1 - MotoApp connection status */
-    if (motoapp_connected) {
-        gpio_pin_set_dt(&led1, 1);
-    } else {
-        gpio_pin_set_dt(&led1, 0);
-    }
-    
-    /* LED2 and LED3 are controlled by flash timer during streaming */
-    if (!data_streaming) {
-        gpio_pin_set_dt(&led2, 0);
-        gpio_pin_set_dt(&led3, 0);
-    }
+    static bool led_state = false;
+    gpio_pin_set_dt(&led0, led_state);
+    led_state = !led_state;
 }
 
 static void led_flash_timer_handler(struct k_timer *timer)
 {
-    /* Turn off both LEDs after flash */
+    /* Turn off both RSSI indicator LEDs */
     gpio_pin_set_dt(&led2, 0);
     gpio_pin_set_dt(&led3, 0);
 }
 
-/* Callbacks from BLE modules */
-static void motoapp_connection_callback(bool connected, struct bt_conn *conn)
+static void led1_rapid_flash_timer_handler(struct k_timer *timer)
 {
-    motoapp_connected = connected;
+    static bool led1_state = false;
     
-    if (connected) {
-        LOG_INF("=== MOTOAPP CONNECTED ===");
-        motoapp_conn = bt_conn_ref(conn);  /* Store connection reference */
+    /* Only flash if both connections are active */
+    if (motoapp_connected && mipe_connected) {
+        led1_state = !led1_state;
+        gpio_pin_set_dt(&led1, led1_state);
+    } else {
+        /* Safety: if timer is running but conditions changed, stop it */
+        k_timer_stop(&led1_rapid_flash_timer);
+        /* Set LED1 based on current state */
+        if (motoapp_connected) {
+            gpio_pin_set_dt(&led1, 1);  /* Solid ON */
+        } else {
+            gpio_pin_set_dt(&led1, 0);  /* OFF */
+        }
+    }
+}
+
+/* Helper function to update LED1 state */
+static void update_led1_state(void)
+{
+    /* Always stop the timer first to prevent any race conditions */
+    k_timer_stop(&led1_rapid_flash_timer);
+    
+    /* Small delay to ensure timer is fully stopped */
+    k_sleep(K_MSEC(10));
+    
+    if (motoapp_connected && mipe_connected) {
+        /* Both connected - start rapid flash */
+        LOG_INF("LED1: Starting rapid flash (dual connection)");
+        k_timer_start(&led1_rapid_flash_timer, K_NO_WAIT, K_MSEC(100));
+    } else if (motoapp_connected) {
+        /* Only MotoApp connected - solid ON */
+        LOG_INF("LED1: Solid ON (MotoApp only)");
         gpio_pin_set_dt(&led1, 1);
     } else {
-        LOG_INF("=== MOTOAPP DISCONNECTED ===");
-        if (motoapp_conn) {
-            bt_conn_unref(motoapp_conn);
-            motoapp_conn = NULL;
-        }
+        /* No MotoApp connection - LED1 off */
+        LOG_INF("LED1: OFF (no MotoApp)");
         gpio_pin_set_dt(&led1, 0);
-        gpio_pin_set_dt(&led2, 0);
-        gpio_pin_set_dt(&led3, 0);
-        data_streaming = false;
     }
 }
 
-static void data_stream_callback(bool start)
+/* BLE Peripheral callbacks */
+static void app_connected(void)
 {
-    data_streaming = start;
+    LOG_INF("MotoApp connected");
+    motoapp_connected = true;
+    update_led1_state();
+}
+
+static void app_disconnected(void)
+{
+    LOG_INF("MotoApp disconnected");
+    motoapp_connected = false;
+    streaming_active = false;
+    update_led1_state();
+    gpio_pin_set_dt(&led3, 0);
+}
+
+static void streaming_state_changed(bool active)
+{
+    LOG_INF("Streaming %s", active ? "started" : "stopped");
+    streaming_active = active;
     
-    if (start) {
-        LOG_INF("=== DATA STREAMING STARTED ===");
-        LOG_INF("Control command received from MotoApp");
-        LOG_INF("Will alternate between fixed (-55) and real RSSI");
-        
-        /* Start the simulated RSSI generation */
-        LOG_INF("Starting alternating RSSI generation...");
-        int err = ble_central_start_scan();  /* This starts the RSSI timer */
-        if (err) {
-            LOG_ERR("Failed to start RSSI generation: %d", err);
-        }
-    } else {
-        LOG_INF("=== DATA STREAMING STOPPED ===");
-        gpio_pin_set_dt(&led2, 0);
+    if (!active) {
         gpio_pin_set_dt(&led3, 0);
-        ble_central_stop_scan();
     }
 }
 
-/* Modified RSSI callback to handle alternating values */
-static void mipe_rssi_callback(int8_t rssi, uint32_t timestamp)
+/* BLE Central callbacks */
+static void mipe_connection_changed(bool connected)
 {
-    if (!data_streaming) {
-        return;
+    LOG_INF("Mipe connection %s", connected ? "established" : "lost");
+    mipe_connected = connected;
+    update_led1_state();
+}
+
+static void mipe_rssi_received(int8_t rssi, uint32_t timestamp)
+{
+    LOG_DBG("Mipe RSSI: %d dBm at %u ms", rssi, timestamp);
+    latest_mipe_rssi = rssi;
+    latest_mipe_timestamp = timestamp;
+}
+
+/* Data transmission callback */
+static int get_rssi_data(int8_t *rssi, uint32_t *timestamp)
+{
+    if (!streaming_active) {
+        return -ENODATA;
     }
     
     int8_t rssi_to_send;
     
+    /* Determine which RSSI to send */
     if (use_fixed_rssi) {
-        /* Send fixed reference value */
+        /* Send fixed reference RSSI */
         rssi_to_send = -55;
         LOG_INF("TX Fixed RSSI: %d dBm (Reference)", rssi_to_send);
         
         /* Flash LED3 for fixed RSSI */
         gpio_pin_set_dt(&led3, 1);
-        k_timer_start(&led_flash_timer, K_MSEC(100), K_NO_WAIT);
+        k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
     } else {
-        /* Get real RSSI from MotoApp connection */
-        if (motoapp_conn) {
-            uint8_t conn_info[16];
-            int err = bt_hci_get_conn_handle(motoapp_conn, &conn_info[0]);
-            if (err == 0) {
-                /* Read actual RSSI - this is a simplified version */
-                /* In production, you'd use bt_conn_get_info() or HCI commands */
-                rssi_to_send = -45 - (k_uptime_get_32() % 20);  /* Simulate varying RSSI */
-            } else {
-                rssi_to_send = -65;  /* Default if can't read */
-            }
+        /* Send real RSSI */
+        if (mipe_connected && latest_mipe_timestamp > 0) {
+            /* Use actual Mipe RSSI */
+            rssi_to_send = latest_mipe_rssi;
+            LOG_INF("TX Real RSSI: %d dBm (from Mipe)", rssi_to_send);
         } else {
-            rssi_to_send = -70;  /* No connection */
+            /* Use simulated RSSI when Mipe not connected */
+            rssi_to_send = -45 - (k_uptime_get_32() % 20);
+            LOG_INF("TX Real RSSI: %d dBm (Simulated)", rssi_to_send);
         }
-        
-        LOG_INF("TX Real RSSI: %d dBm (MotoApp Connection)", rssi_to_send);
         
         /* Flash LED2 for real RSSI */
         gpio_pin_set_dt(&led2, 1);
-        k_timer_start(&led_flash_timer, K_MSEC(100), K_NO_WAIT);
+        k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
     }
     
     /* Toggle for next transmission */
     use_fixed_rssi = !use_fixed_rssi;
     
-    /* Forward to BLE peripheral for transmission */
-    ble_peripheral_notify_rssi(rssi_to_send, timestamp);
+    *rssi = rssi_to_send;
+    *timestamp = k_uptime_get_32();
+    
+    /* Keep LED3 on during streaming */
+    if (streaming_active && !k_timer_remaining_get(&led_flash_timer)) {
+        gpio_pin_set_dt(&led3, 1);
+    }
+    
+    return 0;
 }
 
 static int init_leds(void)
 {
     int ret;
-    
-    if (!device_is_ready(led1.port) || 
-        !device_is_ready(led2.port) || 
-        !device_is_ready(led3.port)) {
-        LOG_ERR("LED devices not ready");
+
+    /* Check if devices are ready */
+    if (!gpio_is_ready_dt(&led0)) {
+        LOG_ERR("LED0 device not ready");
         return -ENODEV;
     }
-    
+    if (!gpio_is_ready_dt(&led1)) {
+        LOG_ERR("LED1 device not ready");
+        return -ENODEV;
+    }
+    if (!gpio_is_ready_dt(&led2)) {
+        LOG_ERR("LED2 device not ready");
+        return -ENODEV;
+    }
+    if (!gpio_is_ready_dt(&led3)) {
+        LOG_ERR("LED3 device not ready");
+        return -ENODEV;
+    }
+
+    /* Configure GPIOs */
+    ret = gpio_pin_configure_dt(&led0, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+        LOG_ERR("Failed to configure LED0: %d", ret);
+        return ret;
+    }
     ret = gpio_pin_configure_dt(&led1, GPIO_OUTPUT_INACTIVE);
-    if (ret < 0) return ret;
-    
+    if (ret < 0) {
+        LOG_ERR("Failed to configure LED1: %d", ret);
+        return ret;
+    }
     ret = gpio_pin_configure_dt(&led2, GPIO_OUTPUT_INACTIVE);
-    if (ret < 0) return ret;
-    
+    if (ret < 0) {
+        LOG_ERR("Failed to configure LED2: %d", ret);
+        return ret;
+    }
     ret = gpio_pin_configure_dt(&led3, GPIO_OUTPUT_INACTIVE);
-    if (ret < 0) return ret;
-    
-    LOG_INF("LEDs initialized - v6 alternating mode");
-    LOG_INF("LED1: MotoApp connection");
-    LOG_INF("LED2: Real RSSI transmission");
-    LOG_INF("LED3: Fixed -55 reference transmission");
-    
+    if (ret < 0) {
+        LOG_ERR("Failed to configure LED3: %d", ret);
+        return ret;
+    }
+
+    LOG_INF("All LEDs initialized successfully");
     return 0;
 }
 
 int main(void)
 {
     int err;
-    
-    LOG_INF("=== Host Device Test v6 Starting ===");
-    LOG_INF("Alternating Fixed/Real RSSI Mode");
-    
-    /* Initialize logging */
-    logger_init(LOG_LEVEL_INF);
-    
+
+    LOG_INF("=== Host Device Starting ===");
+    LOG_INF("Features: Alternating RSSI + Real Mipe Connection");
+    LOG_INF("LED1 timing fix for proper solid ON state");
+
     /* Initialize LEDs */
     err = init_leds();
     if (err) {
-        LOG_ERR("LED init failed: %d", err);
+        LOG_ERR("LED initialization failed");
         return err;
     }
-    
-    /* Initialize button handler */
-    err = button_handler_init(NULL);  /* No button callback needed for test */
-    if (err) {
-        LOG_ERR("Button handler init failed: %d", err);
-        return err;
-    }
-    
-    /* Enable Bluetooth */
+
+    /* Initialize timers */
+    k_timer_init(&heartbeat_timer, heartbeat_timer_handler, NULL);
+    k_timer_init(&led_flash_timer, led_flash_timer_handler, NULL);
+    k_timer_init(&led1_rapid_flash_timer, led1_rapid_flash_timer_handler, NULL);
+
+    /* Start heartbeat */
+    k_timer_start(&heartbeat_timer, K_NO_WAIT, K_MSEC(500));
+    LOG_INF("Heartbeat started (LED0)");
+
+    /* Initialize Bluetooth */
     err = bt_enable(NULL);
     if (err) {
-        LOG_ERR("Bluetooth init failed: %d", err);
+        LOG_ERR("Bluetooth init failed (err %d)", err);
         return err;
     }
-    
     LOG_INF("Bluetooth initialized");
-    
-    /* Load settings */
-    if (IS_ENABLED(CONFIG_SETTINGS)) {
-        settings_load();
-    }
-    
-    /* Initialize BLE peripheral (connection to MotoApp) */
-    err = ble_peripheral_init(motoapp_connection_callback, data_stream_callback);
+
+    /* Initialize BLE Peripheral (for MotoApp connection) */
+    err = ble_peripheral_init(app_connected, app_disconnected, 
+                             streaming_state_changed, get_rssi_data);
     if (err) {
-        LOG_ERR("BLE peripheral init failed: %d", err);
+        LOG_ERR("Failed to initialize BLE peripheral: %d", err);
         return err;
     }
-    
-    /* Initialize BLE central test mode */
-    err = ble_central_init(NULL, mipe_rssi_callback);  /* No connection callback needed */
+
+    /* Initialize BLE Central (for Mipe connection) */
+    err = ble_central_init(mipe_connection_changed, mipe_rssi_received);
     if (err) {
-        LOG_ERR("BLE central init failed: %d", err);
+        LOG_ERR("Failed to initialize BLE central: %d", err);
         return err;
     }
-    
-    /* Start advertising to MotoApp */
+
+    /* Start advertising */
     err = ble_peripheral_start_advertising();
     if (err) {
-        LOG_ERR("Advertising failed to start: %d", err);
+        LOG_ERR("Failed to start advertising: %d", err);
         return err;
     }
-    
+
+    /* Start scanning for Mipe */
+    err = ble_central_start_scan();
+    if (err) {
+        LOG_ERR("Failed to start scanning: %d", err);
+        /* Continue anyway - scanning can be retried */
+    }
+
     LOG_INF("=== Host Device Ready ===");
-    LOG_INF("Advertising to MotoApp...");
-    LOG_INF("Test mode: Alternating Fixed/Real RSSI");
-    
-    /* Start monitor timer */
-    k_timer_start(&monitor_timer, K_SECONDS(1), K_SECONDS(1));
-    
+    LOG_INF("Advertising as: MIPE_HOST_A1B2");
+    LOG_INF("Scanning for: SinglePing Mipe");
+    LOG_INF("LED Status:");
+    LOG_INF("  LED0: Heartbeat (blinking)");
+    LOG_INF("  LED1: Solid=MotoApp only, Rapid flash=Dual connection");
+    LOG_INF("  LED2: Real RSSI transmission flash");
+    LOG_INF("  LED3: Fixed RSSI flash + Streaming active");
+
     /* Main loop */
     while (1) {
-        k_sleep(K_FOREVER);
+        k_sleep(K_SECONDS(1));
+        
+        /* Request RSSI from Mipe if connected */
+        if (mipe_connected) {
+            ble_central_request_rssi();
+        }
     }
-    
+
     return 0;
 }
