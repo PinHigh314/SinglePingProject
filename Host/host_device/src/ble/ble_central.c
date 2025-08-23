@@ -116,6 +116,10 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
         // return; // Temporarily disable filter to see all packets
     }
 
+    if (mipe_rssi_callback) {
+        mipe_rssi_callback(rssi, k_uptime_get_32());
+    }
+
     if (mipe_conn) {
         return; /* Already connecting or connected */
     }
