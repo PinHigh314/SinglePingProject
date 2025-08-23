@@ -1,0 +1,82 @@
+# Michael's nRF54L15DK Development Rules - MANDATORY COMPLIANCE
+
+## MANDATORY FIRST ACTIONS - NO EXCEPTIONS
+1. READ PROJECT_CONTEXT_MEMORY.md - This is your FIRST tool use, ALWAYS
+2. CHECK TMT_Structured_Tasks.json for "to_be_worked_on": true - This is your SECOND tool use
+3. NEVER assume an error message shown is current - it may be historical context
+4. If you violate this process, STOP immediately and acknowledge the violation
+
+## MANDATORY: READ CONTEXT MEMORY FIRST
+- ALWAYS read PROJECT_CONTEXT_MEMORY.md at the start of every conversation
+- Update PROJECT_CONTEXT_MEMORY.md after significant progress or discoveries
+- Reference context memory when user asks about project status or history
+- Never lose track of what we're working on or what has been tried before
+
+## CRITICAL: RESEARCH-FIRST METHODOLOGY
+- NEVER start coding without exhaustive research phase
+- DEMAND concrete code examples from official sources before proceeding
+- If no working examples exist for target hardware, assume it's NOT SUPPORTED
+- Challenge every new suggestion with relentless technical scrutiny
+- Research must include: hardware capabilities, SDK support, working examples, known limitations
+- NO EXCEPTIONS: Research phase must be completed to exhaustion before any implementation
+
+## STEP-BY-STEP EXECUTION ONLY
+- Wait for explicit instruction before proceeding to next step
+- Ask for clarification rather than making assumptions
+- Provide status updates after each completed task
+- Confirm understanding before starting any implementation
+- Focus solely on immediate task - no feature suggestions
+
+## MANDATORY VERSION CONTROL & NAMING
+- APK files MUST include revision numbers: AppName_vX.Y_FWZ.W.apk
+- APK version MUST match embedded firmware revision exactly
+- When firmware changes revision, APK MUST be rebuilt with matching version
+- All builds must maintain version traceability between Android app and firmware
+- Document version relationships in build logs
+
+## INTELLIGENCE LOGGING REQUIREMENTS
+- Maintain comprehensive development intelligence logs
+- Document all research findings, failed approaches, and solutions
+- Record hardware limitations and capabilities discovered
+- Log all version relationships and build dependencies
+- Update project intelligence files after every significant discovery
+
+## FORBIDDEN TOPICS - NEVER MENTION AGAIN
+- USB CDC (Communication Device Class) - nRF54L15DK does not support
+- UART over USB - not supported on target hardware
+- Any USB-based serial communication approaches
+- These have been proven incompatible with nRF54L15DK hardware
+
+## TECHNICAL STANDARDS
+- Target platform: nRF54L15DK exclusively
+- Build system: Zephyr RTOS with CMake
+- Communication: BLE only (proven working)
+- Code style: Nordic SDK conventions
+- Documentation: Update all relevant files with findings
+
+## RESEARCH VALIDATION CRITERIA
+- Official Nordic Semiconductor documentation required
+- Working code examples from Nordic SDK mandatory
+- Hardware capability confirmation from official sources
+- If research shows "no examples exist" = "cannot be implemented"
+- Exhaust all official channels before declaring feasibility
+
+## PROJECT MANAGEMENT
+- One task at a time, wait for completion confirmation
+- Document all dead ends and failed approaches
+- Maintain clear separation between proven and experimental features
+- Version control everything with meaningful commit messages
+
+## TMT TASK MANAGEMENT - MANDATORY
+- ONLY work on tasks in TMT_Structured_Tasks.json that have "to_be_worked_on": true
+- NEVER work on tasks with "to_be_worked_on": false
+- When completing a task, IMMEDIATELY update "built": true in TMT_Structured_Tasks.json
+- Status tracking is MANDATORY:
+  - Check task status before starting work
+  - Update "built": true after implementation is complete
+  - Update "verified": true only after testing confirms functionality
+- Follow this process for EVERY task:
+  1. Check TMT_Structured_Tasks.json for "to_be_worked_on": true
+  2. Complete the implementation
+  3. Update "built": true in the JSON file
+  4. Document the completion in PROJECT_CONTEXT_MEMORY.md

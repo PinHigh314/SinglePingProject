@@ -1,6 +1,37 @@
-# System Architect Log
+# System Architect Log & Decision Record
 
 This log documents all major architectural decisions, module boundaries, interface contracts, and the general direction of the project. It serves as a persistent reference for both the system architect and developers, ensuring continuity in case of outages or context loss.
+
+---
+
+## Template for New Architectural Decisions
+
+*(Copy and use this template for all new entries)*
+
+---
+
+## YYYY-MM-DD: [Title of Decision]
+
+**Decision:** A concise statement of the architectural change that was made.
+
+**Rationale:** The reasons and trade-offs that led to this decision. What problem was being solved? What alternatives were considered?
+
+**Impact:** How this decision affects the codebase, other modules, or future development.
+
+---
+
+## 2025-08-21: Log Maintenance Process
+
+**Decision:** To ensure this log is kept up-to-date, the System Architect (AI) will update it at specific, defined trigger points.
+
+**Rationale:** An implicit process is unreliable. An explicit process ensures that all major decisions are captured consistently, making the log a trustworthy source of truth.
+
+**Process Triggers:**
+1.  **Explicit Confirmation:** After a discussion results in a clear architectural decision, the AI will state its intention to update the log.
+2.  **End-of-Milestone Review:** At the conclusion of each Test Milestone Test (TMT), the AI will review the log for any new lessons learned or decisions made during that phase.
+3.  **User Request:** The user can request an update to the log at any time.
+
+**Impact:** This formalizes the documentation process, making it a reliable and integral part of the development workflow.
 
 ---
 

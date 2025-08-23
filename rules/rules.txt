@@ -74,11 +74,11 @@ Each task entry must include:
 
 1. **Copy the hex file** from `build/zephyr/zephyr.hex` to the `compiled code` directory
 2. **Determine the next version number** by checking existing files in `compiled code`
-3. **Name the file** following the pattern: `SinglePingProject_vX_X.hex`
+3. **Name the file** following the pattern: `Host_vX.hex`, `Mipe_vX.hex`, and `MotoApp_vX.apk`
 4. **Execute the copy command** immediately after build completion
 
 ### Hex File Naming Convention
-- Pattern: `SinglePingProject_vX_X.hex`
+- Pattern: `Host_vX.hex`, `Mipe_vX.hex`, and `MotoApp_vX.apk`
 - Version numbering: Increment from the last version in `compiled code` directory
 - Special builds: Can include descriptive suffixes (e.g., `SinglePingProject_v1.2_ButtonDiscovery.hex`)
 
@@ -105,5 +105,3 @@ Update the `version_log.md` file in the `compiled code` directory with:
     Always consider the global system functionality described in te Master Project Prompt.
     When you have made a suggestion and it has been approved, please correct the prompt realted to the task.
 - When a tasks has been built, Cline is to add a check mark in the Built column in the task's row, this will be done after the hex file or App has been built or compiled, copied, renamed and the version log has been updated.
-
-
