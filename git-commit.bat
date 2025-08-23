@@ -39,10 +39,7 @@ if "%commit_msg%"=="" (
 :: Stage all changes
 echo.
 echo Staging all changes...
-git add Host
-git add Mipe
-git add MotoApp
-git add New_SinglePing_nRF54L15DK
+git submodule update --remote
 git add -A
 
 :: Show what will be committed
