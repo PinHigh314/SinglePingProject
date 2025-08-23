@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.singleping.motoapp.viewmodel.MotoAppBleViewModel
 import kotlinx.coroutines.delay
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
@@ -36,13 +39,23 @@ data class BleDevice(
 
 @SuppressLint("MissingPermission")
 @Composable
-fun DebugScreen() {
+fun DebugScreen(viewModel: MotoAppBleViewModel = viewModel()) {
     val context = LocalContext.current
     var isScanning by remember { mutableStateOf(false) }
     var devices by remember { mutableStateOf<List<BleDevice>>(emptyList()) }
     var scanStatus by remember { mutableStateOf("Ready to scan") }
     val deviceMap = remember { mutableMapOf<String, BleDevice>() }
     var scanCount by remember { mutableStateOf(0) }
+    
+    val logHistory by viewModel.logHistory.collectAsState()
+    val listState = rememberLazyListState()
+
+    // Automatically scroll to the bottom when a new log entry is added
+    LaunchedEffect(logHistory) {
+        if (logHistory.isNotEmpty()) {
+            listState.animateScrollToItem(logHistory.size - 1)
+        }
+    }
     
     // Check Bluetooth status
     val bluetoothManager = remember { context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager }
@@ -342,8 +355,38 @@ fun DebugScreen() {
         
         Divider(modifier = Modifier.padding(vertical = 8.dp))
         
+        // Log History
+        Text(
+            text = "BLE Logs",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(bottom = 8.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            LazyColumn(
+                modifier = Modifier.padding(8.dp),
+                state = listState
+            ) {
+                items(logHistory) { log ->
+                    Text(
+                        text = log,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+            }
+        }
+        
+        Divider(modifier = Modifier.padding(vertical = 8.dp))
+        
         LazyColumn(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.weight(1f)
         ) {
             items(devices) { device ->
                 Card(

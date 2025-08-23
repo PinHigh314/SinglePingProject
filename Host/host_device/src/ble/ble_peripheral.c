@@ -33,6 +33,14 @@ LOG_MODULE_REGISTER(ble_peripheral_v8, LOG_LEVEL_INF);
 #define STATUS_CHAR_UUID BT_UUID_DECLARE_128( \
     BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef3))
 
+/* Mipe Status Characteristic UUID: 12345678-1234-5678-1234-56789abcdef4 */
+#define MIPE_STATUS_CHAR_UUID BT_UUID_DECLARE_128( \
+    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef4))
+
+/* Log Data Characteristic UUID: 12345678-1234-5678-1234-56789abcdef5 */
+#define LOG_DATA_CHAR_UUID BT_UUID_DECLARE_128( \
+    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef5))
+
 /* Control commands */
 #define CMD_START_STREAM 0x01
 #define CMD_STOP_STREAM  0x02
@@ -41,6 +49,8 @@ LOG_MODULE_REGISTER(ble_peripheral_v8, LOG_LEVEL_INF);
 /* Connection state */
 static struct bt_conn *current_conn = NULL;
 static bool rssi_notify_enabled = false;
+static bool mipe_status_notify_enabled = false;
+static bool log_notify_enabled = false;
 static bool streaming_active = false;
 static uint32_t packet_count = 0;
 
@@ -53,9 +63,12 @@ static int (*get_rssi_data_cb)(int8_t *rssi, uint32_t *timestamp) = NULL;
 /* Status data */
 static uint8_t host_status[8] = {0}; /* Status response buffer */
 static uint8_t rssi_data[4] = {0};   /* RSSI data packet buffer */
+static mipe_status_t mipe_status = {0}; /* Mipe status data */
 
 /* Store the RSSI characteristic attribute pointer */
 static const struct bt_gatt_attr *rssi_char_attr = NULL;
+static const struct bt_gatt_attr *mipe_status_char_attr = NULL;
+static const struct bt_gatt_attr *log_char_attr = NULL;
 
 /* Forward declarations */
 static void connected(struct bt_conn *conn, uint8_t err);
@@ -65,6 +78,8 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
 static ssize_t status_read(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                           void *buf, uint16_t len, uint16_t offset);
 static void rssi_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value);
+static void mipe_status_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value);
+static void log_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value);
 
 /* Connection callbacks */
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -95,6 +110,20 @@ BT_GATT_SERVICE_DEFINE(tmt1_service,
                           BT_GATT_CHRC_READ,
                           BT_GATT_PERM_READ,
                           status_read, NULL, host_status),
+
+    /* Mipe Status Characteristic - Read & Notify */
+    BT_GATT_CHARACTERISTIC(MIPE_STATUS_CHAR_UUID,
+                          BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+                          BT_GATT_PERM_READ,
+                          NULL, NULL, &mipe_status),
+    BT_GATT_CCC(mipe_status_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+
+    /* Log Data Characteristic - Notify */
+    BT_GATT_CHARACTERISTIC(LOG_DATA_CHAR_UUID,
+                          BT_GATT_CHRC_NOTIFY,
+                          BT_GATT_PERM_NONE,
+                          NULL, NULL, NULL),
+    BT_GATT_CCC(log_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 );
 
 /* Advertising data */
@@ -154,7 +183,11 @@ int ble_peripheral_init(void (*conn_cb)(void), void (*disconn_cb)(void),
 
     /* Find and store the RSSI characteristic attribute */
     rssi_char_attr = &tmt1_service.attrs[2];
+    mipe_status_char_attr = &tmt1_service.attrs[8];
+    log_char_attr = &tmt1_service.attrs[11];
     LOG_INF("RSSI characteristic attribute stored at index 2");
+    LOG_INF("Mipe status characteristic attribute stored at index 8");
+    LOG_INF("Log characteristic attribute stored at index 11");
 
     /* Initialize work and timer */
     k_work_init(&tx_work, tx_work_handler);
@@ -238,6 +271,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     }
 
     rssi_notify_enabled = false;
+    mipe_status_notify_enabled = false;
+    log_notify_enabled = false;
     streaming_active = false;
     
     /* Stop transmission timer */
@@ -339,6 +374,27 @@ static void rssi_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value
     }
 }
 
+static void mipe_status_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+    mipe_status_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
+    LOG_INF("Mipe status notifications %s", mipe_status_notify_enabled ? "enabled" : "disabled");
+}
+
+static void log_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+    log_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
+    LOG_INF("Log notifications %s", log_notify_enabled ? "enabled" : "disabled");
+}
+
+int ble_peripheral_send_log_data(const char *log_str)
+{
+    if (!current_conn || !log_notify_enabled) {
+        return -ENOTCONN;
+    }
+
+    return bt_gatt_notify(current_conn, log_char_attr, log_str, strlen(log_str));
+}
+
 int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
 {
     struct bt_conn_info info;
@@ -391,4 +447,15 @@ bool ble_peripheral_is_connected(void)
 bool ble_peripheral_is_streaming(void)
 {
     return streaming_active;
+}
+
+int ble_peripheral_update_mipe_status(const mipe_status_t *status)
+{
+    if (!current_conn || !mipe_status_notify_enabled) {
+        return -ENOTCONN;
+    }
+
+    memcpy(&mipe_status, status, sizeof(mipe_status_t));
+
+    return bt_gatt_notify(current_conn, mipe_status_char_attr, &mipe_status, sizeof(mipe_status_t));
 }

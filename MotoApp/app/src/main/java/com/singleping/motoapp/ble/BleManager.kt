@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import no.nordicsemi.android.ble.BleManager
 import no.nordicsemi.android.ble.data.Data
 import java.util.UUID
+import com.singleping.motoapp.data.MipeStatus
 
 /**
  * BLE Manager for connecting to the Host device (MIPE_HOST_A1B2)
@@ -31,6 +32,8 @@ class HostBleManager(context: Context) : BleManager(context) {
         val RSSI_DATA_CHAR_UUID: UUID = UUID.fromString("12345678-1234-5678-1234-56789abcdef1")
         val CONTROL_CHAR_UUID: UUID = UUID.fromString("12345678-1234-5678-1234-56789abcdef2")
         val STATUS_CHAR_UUID: UUID = UUID.fromString("12345678-1234-5678-1234-56789abcdef3")
+        val MIPE_STATUS_CHAR_UUID: UUID = UUID.fromString("12345678-1234-5678-1234-56789abcdef4")
+        val LOG_DATA_CHAR_UUID: UUID = UUID.fromString("12345678-1234-5678-1234-56789abcdef5")
         
         // Control commands
         const val CMD_START_STREAM: Byte = 0x01
@@ -44,11 +47,15 @@ class HostBleManager(context: Context) : BleManager(context) {
     
     // RSSI data callback
     var onRssiDataReceived: ((rssi: Int, timestamp: Long) -> Unit)? = null
+    var onMipeStatusReceived: ((status: MipeStatus) -> Unit)? = null
+    var onLogDataReceived: ((log: String) -> Unit)? = null
     
     // GATT characteristics
     private var rssiDataCharacteristic: BluetoothGattCharacteristic? = null
     private var controlCharacteristic: BluetoothGattCharacteristic? = null
     private var statusCharacteristic: BluetoothGattCharacteristic? = null
+    private var mipeStatusCharacteristic: BluetoothGattCharacteristic? = null
+    private var logDataCharacteristic: BluetoothGattCharacteristic? = null
     
     override fun getGattCallback(): BleManagerGattCallback {
         return object : BleManagerGattCallback() {
@@ -59,10 +66,14 @@ class HostBleManager(context: Context) : BleManager(context) {
                     rssiDataCharacteristic = service.getCharacteristic(RSSI_DATA_CHAR_UUID)
                     controlCharacteristic = service.getCharacteristic(CONTROL_CHAR_UUID)
                     statusCharacteristic = service.getCharacteristic(STATUS_CHAR_UUID)
+                    mipeStatusCharacteristic = service.getCharacteristic(MIPE_STATUS_CHAR_UUID)
+                    logDataCharacteristic = service.getCharacteristic(LOG_DATA_CHAR_UUID)
                     
                     return rssiDataCharacteristic != null && 
                            controlCharacteristic != null && 
-                           statusCharacteristic != null
+                           statusCharacteristic != null &&
+                           mipeStatusCharacteristic != null &&
+                           logDataCharacteristic != null
                 }
                 return false
             }
@@ -71,6 +82,8 @@ class HostBleManager(context: Context) : BleManager(context) {
                 rssiDataCharacteristic = null
                 controlCharacteristic = null
                 statusCharacteristic = null
+                mipeStatusCharacteristic = null
+                logDataCharacteristic = null
             }
             
             override fun initialize() {
@@ -78,6 +91,20 @@ class HostBleManager(context: Context) : BleManager(context) {
                 rssiDataCharacteristic?.let { characteristic ->
                     setNotificationCallback(characteristic).with { _, data ->
                         handleRssiData(data)
+                    }
+                    enableNotifications(characteristic).enqueue()
+                }
+
+                mipeStatusCharacteristic?.let { characteristic ->
+                    setNotificationCallback(characteristic).with { _, data ->
+                        handleMipeStatusData(data)
+                    }
+                    enableNotifications(characteristic).enqueue()
+                }
+
+                logDataCharacteristic?.let { characteristic ->
+                    setNotificationCallback(characteristic).with { _, data ->
+                        handleLogData(data)
                     }
                     enableNotifications(characteristic).enqueue()
                 }
@@ -103,6 +130,43 @@ class HostBleManager(context: Context) : BleManager(context) {
             
             Log.d(TAG, "Received RSSI data: $rssiValue dBm, timestamp: $timestamp")
             onRssiDataReceived?.invoke(rssiValue, timestamp)
+        }
+    }
+
+    private fun handleLogData(data: Data) {
+        val logString = data.getStringValue(0)
+        if (logString != null) {
+            Log.d(TAG, "Received log data: $logString")
+            onLogDataReceived?.invoke(logString)
+        }
+    }
+
+    private fun handleMipeStatusData(data: Data) {
+        if (data.size() >= 12) {
+            val connectionStateValue = data.getByte(0)?.toInt() ?: 0
+            val rssi = data.getByte(1)?.toInt() ?: 0
+            val deviceAddressBytes = data.value?.sliceArray(2..7)
+            val deviceAddress = deviceAddressBytes?.joinToString(":") { "%02X".format(it) }
+            val connectionDuration = data.getIntValue(Data.FORMAT_UINT32_LE, 8) ?: 0
+
+            val connectionState = when (connectionStateValue) {
+                0 -> "Idle"
+                1 -> "Scanning"
+                2 -> "Connected"
+                3 -> "Connected" // Also connected
+                4 -> "Disconnected"
+                else -> "Unknown"
+            }
+
+            val status = MipeStatus(
+                connectionState = connectionState,
+                rssi = rssi,
+                deviceName = null, // Not available in the current data packet
+                deviceAddress = deviceAddress,
+                connectionDuration = connectionDuration.toLong(),
+                lastSeen = System.currentTimeMillis()
+            )
+            onMipeStatusReceived?.invoke(status)
         }
     }
     

@@ -1,13 +1,13 @@
 ﻿cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
-project(host_device_test_v9)
+project(host_device)
 
-# Main application source - v9 with LED1 timing fix
+# Main application source
 target_sources(app PRIVATE
-    src/main_test_fixed_rssi_v9.c
-    src/ble/ble_peripheral_v8.c
-    src/ble/ble_central_real.c
+    src/main.c
+    src/ble/ble_peripheral.c
+    src/ble/ble_central.c
 )
 
 # Include directories

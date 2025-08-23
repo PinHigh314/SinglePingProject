@@ -49,6 +49,7 @@ fun MainScreen(
     val distanceData by viewModel.distanceData.collectAsState()
     val hostInfo by viewModel.hostInfo.collectAsState()
     val useRealBle by viewModel.useRealBle.collectAsState()
+    val mipeStatus by viewModel.mipeStatus.collectAsState()
     
     // Update connection time display
     var connectionTimeDisplay by remember { mutableStateOf("00:00:00") }
@@ -132,8 +133,13 @@ fun MainScreen(
                 )
             }
         }
+
+        // 4. Host Status Section
+        mipeStatus?.let {
+            HostStatusSection(status = it)
+        }
         
-        // 4. Status Display Panel
+        // 5. Status Display Panel
         StatusPanel(
             connectionState = connectionState,
             streamState = streamState,
@@ -493,6 +499,62 @@ fun DistanceSection(
             ) {
                 Text("Sample Count:")
                 Text("${distanceData.sampleCount}")
+            }
+        }
+    }
+}
+
+@Composable
+fun HostStatusSection(status: MipeStatus) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Host Status",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Divider()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Mipe Connection:")
+                Text(
+                    text = status.connectionState,
+                    fontWeight = FontWeight.Bold,
+                    color = when (status.connectionState) {
+                        "Connected" -> Color(0xFF4CAF50)
+                        "Scanning" -> Color(0xFFFF9800)
+                        else -> Color.Red
+                    }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Mipe RSSI:")
+                Text("${status.rssi} dBm")
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Mipe Address:")
+                Text(status.deviceAddress ?: "N/A")
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Connection Duration:")
+                Text("${status.connectionDuration}s")
             }
         }
     }

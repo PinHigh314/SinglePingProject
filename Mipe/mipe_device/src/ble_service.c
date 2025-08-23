@@ -68,7 +68,7 @@ static const struct bt_data ad[] = {
 
 /* Scan response data with device name */
 static const struct bt_data sd[] = {
-    BT_DATA(BT_DATA_NAME_COMPLETE, "MIPE", 4),
+    BT_DATA(BT_DATA_NAME_COMPLETE, "SinglePing Mipe", 15),
 };
 
 /* Advertising parameters - using Host's proven approach */

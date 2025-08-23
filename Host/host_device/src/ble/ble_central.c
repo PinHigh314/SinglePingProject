@@ -44,84 +44,120 @@ static struct bt_conn_cb conn_callbacks = {
     .disconnected = disconnected,
 };
 
+/* Context for the data parser */
+struct ad_parse_ctx {
+    const bt_addr_le_t *addr;
+    int8_t rssi;
+};
+
+/* Data parsing callback */
+static bool ad_parse_cb(struct bt_data *data, void *user_data)
+{
+    struct ad_parse_ctx *ctx = user_data;
+    char name[32];
+    uint8_t name_len;
+
+    if (data->type != BT_DATA_NAME_COMPLETE && data->type != BT_DATA_NAME_SHORTENED) {
+        return true; /* Continue parsing */
+    }
+
+    name_len = MIN(data->data_len, sizeof(name) - 1);
+    memcpy(name, data->data, name_len);
+    name[name_len] = '\0';
+
+    if (strcmp(name, MIPE_DEVICE_NAME) == 0) {
+        char addr_str[BT_ADDR_LE_STR_LEN];
+        struct bt_le_conn_param *param;
+        int err;
+
+        bt_addr_le_to_str(ctx->addr, addr_str, sizeof(addr_str));
+        LOG_INF("Found Mipe device: %s (RSSI %d)", addr_str, ctx->rssi);
+
+        if (mipe_conn) {
+            return false; /* Already connecting, stop parsing */
+        }
+
+        /* Stop scanning */
+        err = bt_le_scan_stop();
+        if (err) {
+            LOG_ERR("Failed to stop scan: %d", err);
+            return false; /* Stop parsing */
+        }
+        scanning = false;
+
+        /* Connect to the device */
+        param = BT_LE_CONN_PARAM_DEFAULT;
+        err = bt_conn_le_create(ctx->addr, BT_CONN_LE_CREATE_CONN, param, &mipe_conn);
+        if (err) {
+            LOG_ERR("Failed to create connection: %d", err);
+            /* Restart scanning */
+            ble_central_start_scan();
+        }
+        
+        return false; /* Stop parsing */
+    }
+
+    return true; /* Continue parsing */
+}
+
 /* Scan callback */
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                         struct net_buf_simple *ad)
 {
     char addr_str[BT_ADDR_LE_STR_LEN];
-    struct bt_le_conn_param *param;
-    int err;
-
-    if (mipe_conn) {
-        return; /* Already connected */
-    }
-
-    /* Check if this is a connectable advertisement */
-    if (type != BT_GAP_ADV_TYPE_ADV_IND && 
-        type != BT_GAP_ADV_TYPE_ADV_DIRECT_IND) {
-        return;
-    }
 
     bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+    LOG_INF("Device found: %s (RSSI %d), type %u", addr_str, rssi, type);
 
-    /* Parse advertisement data for device name */
-    while (ad->len > 1) {
-        uint8_t len = net_buf_simple_pull_u8(ad);
-        uint8_t type;
-
-        if (len == 0 || len > ad->len) {
-            break;
-        }
-
-        type = net_buf_simple_pull_u8(ad);
-        len--;
-
-        if (type == BT_DATA_NAME_COMPLETE || type == BT_DATA_NAME_SHORTENED) {
-            char name[32];
-            uint8_t name_len = MIN(len, sizeof(name) - 1);
-            
-            memcpy(name, ad->data, name_len);
-            name[name_len] = '\0';
-
-            if (strcmp(name, MIPE_DEVICE_NAME) == 0) {
-                LOG_INF("Found Mipe device: %s (RSSI %d)", addr_str, rssi);
-
-                /* Stop scanning */
-                err = bt_le_scan_stop();
-                if (err) {
-                    LOG_ERR("Failed to stop scan: %d", err);
-                    return;
-                }
-                scanning = false;
-
-                /* Connect to the device */
-                param = BT_LE_CONN_PARAM_DEFAULT;
-                err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, param, &mipe_conn);
-                if (err) {
-                    LOG_ERR("Failed to create connection: %d", err);
-                    /* Restart scanning */
-                    ble_central_start_scan();
-                }
-                return;
-            }
-        }
-
-        net_buf_simple_pull(ad, len);
+    /* We're only interested in connectable events */
+    if (type != BT_GAP_ADV_TYPE_ADV_IND && 
+        type != BT_GAP_ADV_TYPE_ADV_DIRECT_IND &&
+        type != BT_GAP_ADV_TYPE_SCAN_RSP) {
+        // return; // Temporarily disable filter to see all packets
     }
+
+    if (mipe_conn) {
+        return; /* Already connecting or connected */
+    }
+
+    struct ad_parse_ctx ctx = {
+        .addr = addr,
+        .rssi = rssi,
+    };
+
+    bt_data_parse(ad, ad_parse_cb, &ctx);
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
 {
     char addr[BT_ADDR_LE_STR_LEN];
-    
+    struct bt_conn_info info;
+
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
     if (err) {
         LOG_ERR("Failed to connect to %s (%u)", addr, err);
-        bt_conn_unref(mipe_conn);
-        mipe_conn = NULL;
+        if (conn == mipe_conn) {
+            bt_conn_unref(mipe_conn);
+            mipe_conn = NULL;
+        }
         /* Restart scanning */
         ble_central_start_scan();
+        return;
+    }
+
+    /* Get connection info */
+    bt_conn_get_info(conn, &info);
+
+    /* Ensure this is a central connection */
+    if (info.role != BT_CONN_ROLE_CENTRAL) {
+        LOG_DBG("Ignoring peripheral connection from %s", addr);
+        return;
+    }
+
+    /* Ensure this is the Mipe connection that we initiated */
+    if (conn != mipe_conn) {
+        LOG_WRN("Connected to an unknown central device: %s", addr);
         return;
     }
 
@@ -132,6 +168,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
     
     /* Notify callback */
     if (mipe_conn_callback) {
+        LOG_INF("Calling mipe_conn_callback(true)");
         mipe_conn_callback(true);
     }
 }
@@ -177,7 +214,7 @@ int ble_central_init(mipe_connection_cb_t conn_cb, mipe_rssi_cb_t rssi_cb)
     k_timer_init(&rssi_timer, rssi_timer_handler, NULL);
     k_work_init(&rssi_work, rssi_work_handler);
 
-    LOG_INF("BLE Central REAL VERSION initialized");
+    LOG_INF("BLE Central REAL VERSION initialized, mipe_conn is %s", mipe_conn ? "not NULL" : "NULL");
     return 0;
 }
 
@@ -259,6 +296,11 @@ int ble_central_request_rssi(void)
 bool ble_central_is_connected(void)
 {
     return (mipe_conn != NULL);
+}
+
+bool ble_central_is_scanning(void)
+{
+    return scanning;
 }
 
 /* RSSI measurement timer handler */

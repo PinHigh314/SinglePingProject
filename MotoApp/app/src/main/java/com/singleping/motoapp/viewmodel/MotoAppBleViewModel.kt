@@ -49,6 +49,12 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     private val _hostInfo = MutableStateFlow(HostInfo())
     val hostInfo: StateFlow<HostInfo> = _hostInfo.asStateFlow()
+
+    private val _mipeStatus = MutableStateFlow<MipeStatus?>(null)
+    val mipeStatus: StateFlow<MipeStatus?> = _mipeStatus.asStateFlow()
+    
+    private val _logHistory = MutableStateFlow<List<String>>(emptyList())
+    val logHistory: StateFlow<List<String>> = _logHistory.asStateFlow()
     
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -81,6 +87,20 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         bleManager.onRssiDataReceived = { rssi, timestamp ->
             viewModelScope.launch {
                 handleRealRssiData(rssi, timestamp)
+            }
+        }
+
+        // Set up Mipe status callback
+        bleManager.onMipeStatusReceived = { status ->
+            viewModelScope.launch {
+                _mipeStatus.value = status
+            }
+        }
+
+        bleManager.onLogDataReceived = { log ->
+            viewModelScope.launch {
+                val updatedLogs = (_logHistory.value + log).takeLast(100)
+                _logHistory.value = updatedLogs
             }
         }
     }

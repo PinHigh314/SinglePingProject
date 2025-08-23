@@ -326,3 +326,34 @@
   - Material theme fix applied
 - **Size:** 22.3 MB
 - **Notes:** Foundation build for TMT testing
+23/08/2025 14.33.57,15 - Built: host_device_build_082025_rev008.hex 
+2025-08-23 14:43 - Built: mipe_device_tmt3_build_20250823_rev022.hex
+23/08/2025 16.55.59,00 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 17.56.40,48 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 17.58.37,82 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 17.58.52,10 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 17.59.02,17 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 18.07.58,22 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 18.08.14,08 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 18.17.07,28 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 18.19.13,32 - Built: host_device_build_082025_rev008.hex 
+23/08/2025 18.22.03,46 - Built: host_device_build_082025_rev001.hex 
+23/08/2025 18.22.35,01 - Built: host_device_build_082025_rev000.hex 
+23/08/2025 18.24.16,45 - Built: host_device_build_082025_rev001.hex 
+23/08/2025 18.26.40,19 - Built: host_device_build_082025_rev001.hex 
+23/08/2025 18.32.57,19 - Built: host_device_build_082025.hex 
+23/08/2025 18.40.59,53 - Built: host_device_build_082025.hex 
+23/08/2025 18.48.40,05 - Built: mipe_device_build_082025_rev008.hex 
+23/08/2025 18.57.09,37 - Built: host_device_build_082025.hex 
+23/08/2025 18.57.34,92 - Built: mipe_device_build_082025_rev008.hex 
+23/08/2025 18.58.25,57 - Built: mipe_device_build_082025_rev008.hex 
+23/08/2025 19.03.02,15 - Built: host_device_build_082025.hex 
+23/08/2025 19.06.24,26 - Built: host_device_build_082025.hex 
+23/08/2025 19.11.21,88 - Built: host_device_build_082025.hex 
+23/08/2025 20.00.09,02 - Built: host_device_build_082025.hex 
+23/08/2025 20.05.04,35 - Built: host_device_build_082025.hex 
+23/08/2025 20.26.25,35 - Built: host_device_build_082025.hex 
+23/08/2025 20.36.20,43 - Built: host_device_build_082025.hex 
+23/08/2025 20.43.08,43 - Built: host_device_build_082025.hex 
+23/08/2025 20.48.47,68 - Built: host_device_build_082025.hex 
+23/08/2025 21.01.06,54 - Built: host_device_build_082025.hex 
