@@ -189,23 +189,20 @@ static void streaming_state_changed(bool active)
     }
 }
 
-/* BLE Central callbacks */
-static void mipe_connection_changed(bool connected)
-{
-    log_ble("Mipe connection %s", connected ? "established" : "lost");
-    mipe_connected = connected;
-    if (connected) {
-        mipe_connection_attempts++;
-    }
-    update_led1_state();
-    update_mipe_status();
-}
-
+/* BLE Central callback */
 static void mipe_rssi_received(int8_t rssi, uint32_t timestamp)
 {
     log_ble("Mipe RSSI: %d dBm at %u ms", rssi, timestamp);
     latest_mipe_rssi = rssi;
     latest_mipe_timestamp = timestamp;
+    
+    /* In beacon mode, we're always "connected" for RSSI purposes */
+    if (!mipe_connected) {
+        mipe_connected = true;
+        log_ble("Mipe beacon detected - RSSI streaming active");
+        update_led1_state();
+        update_mipe_status();
+    }
 }
 
 /* Data transmission callback */
@@ -343,8 +340,8 @@ int main(void)
         return err;
     }
 
-    /* Initialize BLE Central (for Mipe connection) */
-    err = ble_central_init(mipe_connection_changed, mipe_rssi_received);
+    /* Initialize BLE Central (for Mipe beacon scanning) */
+    err = ble_central_init(mipe_rssi_received);
     if (err) {
         LOG_ERR("Failed to initialize BLE central: %d", err);
         return err;
@@ -376,11 +373,6 @@ int main(void)
     /* Main loop */
     while (1) {
         k_sleep(K_SECONDS(1));
-        
-        /* Request RSSI from Mipe if connected */
-        if (mipe_connected) {
-            ble_central_request_rssi();
-        }
         update_mipe_status();
     }
 

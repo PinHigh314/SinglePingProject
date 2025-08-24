@@ -4,15 +4,14 @@
  */
 
 /**
- * BLE Central REAL VERSION for v8
- * Actual BLE scanning and connection to Mipe device
+ * BLE Central REAL VERSION - BEACON MODE
+ * Scans for Mipe device advertising packets to read RSSI for distance measurement
+ * No BLE connection is established - Mipe is treated as a beacon only
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
-#include <zephyr/bluetooth/gatt.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 
@@ -23,26 +22,9 @@ LOG_MODULE_REGISTER(ble_central_real, LOG_LEVEL_INF);
 /* Target device name */
 #define MIPE_DEVICE_NAME "SinglePing Mipe"
 
-/* Connection and callback management */
-static struct bt_conn *mipe_conn = NULL;
-static mipe_connection_cb_t mipe_conn_callback = NULL;
+/* Callback management */
 static mipe_rssi_cb_t mipe_rssi_callback = NULL;
 static bool scanning = false;
-
-/* RSSI measurement timer and work */
-static struct k_timer rssi_timer;
-static struct k_work rssi_work;
-static void rssi_timer_handler(struct k_timer *timer);
-static void rssi_work_handler(struct k_work *work);
-
-/* Connection callbacks */
-static void connected(struct bt_conn *conn, uint8_t err);
-static void disconnected(struct bt_conn *conn, uint8_t reason);
-
-static struct bt_conn_cb conn_callbacks = {
-    .connected = connected,
-    .disconnected = disconnected,
-};
 
 /* Context for the data parser */
 struct ad_parse_ctx {
@@ -67,31 +49,12 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
 
     if (strcmp(name, MIPE_DEVICE_NAME) == 0) {
         char addr_str[BT_ADDR_LE_STR_LEN];
-        struct bt_le_conn_param *param;
-        int err;
-
         bt_addr_le_to_str(ctx->addr, addr_str, sizeof(addr_str));
-        LOG_INF("Found Mipe device: %s (RSSI %d)", addr_str, ctx->rssi);
-
-        if (mipe_conn) {
-            return false; /* Already connecting, stop parsing */
-        }
-
-        /* Stop scanning */
-        err = bt_le_scan_stop();
-        if (err) {
-            LOG_ERR("Failed to stop scan: %d", err);
-            return false; /* Stop parsing */
-        }
-        scanning = false;
-
-        /* Connect to the device */
-        param = BT_LE_CONN_PARAM_DEFAULT;
-        err = bt_conn_le_create(ctx->addr, BT_CONN_LE_CREATE_CONN, param, &mipe_conn);
-        if (err) {
-            LOG_ERR("Failed to create connection: %d", err);
-            /* Restart scanning */
-            ble_central_start_scan();
+        LOG_INF("Found Mipe beacon: %s (RSSI %d)", addr_str, ctx->rssi);
+        
+        /* Forward RSSI to callback immediately */
+        if (mipe_rssi_callback) {
+            mipe_rssi_callback(ctx->rssi, k_uptime_get_32());
         }
         
         return false; /* Stop parsing */
@@ -116,14 +79,6 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
         // return; // Temporarily disable filter to see all packets
     }
 
-    if (mipe_rssi_callback) {
-        mipe_rssi_callback(rssi, k_uptime_get_32());
-    }
-
-    if (mipe_conn) {
-        return; /* Already connecting or connected */
-    }
-
     struct ad_parse_ctx ctx = {
         .addr = addr,
         .rssi = rssi,
@@ -132,93 +87,16 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
     bt_data_parse(ad, ad_parse_cb, &ctx);
 }
 
-static void connected(struct bt_conn *conn, uint8_t err)
+int ble_central_init(mipe_rssi_cb_t rssi_cb)
 {
-    char addr[BT_ADDR_LE_STR_LEN];
-    struct bt_conn_info info;
-
-    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-    if (err) {
-        LOG_ERR("Failed to connect to %s (%u)", addr, err);
-        if (conn == mipe_conn) {
-            bt_conn_unref(mipe_conn);
-            mipe_conn = NULL;
-        }
-        /* Restart scanning */
-        ble_central_start_scan();
-        return;
-    }
-
-    /* Get connection info */
-    bt_conn_get_info(conn, &info);
-
-    /* Ensure this is a central connection */
-    if (info.role != BT_CONN_ROLE_CENTRAL) {
-        LOG_DBG("Ignoring peripheral connection from %s", addr);
-        return;
-    }
-
-    /* Ensure this is the Mipe connection that we initiated */
-    if (conn != mipe_conn) {
-        LOG_WRN("Connected to an unknown central device: %s", addr);
-        return;
-    }
-
-    LOG_INF("Connected to Mipe: %s", addr);
-    
-    /* Start RSSI measurement timer (1Hz) */
-    k_timer_start(&rssi_timer, K_SECONDS(1), K_SECONDS(1));
-    
-    /* Notify callback */
-    if (mipe_conn_callback) {
-        LOG_INF("Calling mipe_conn_callback(true)");
-        mipe_conn_callback(true);
-    }
-}
-
-static void disconnected(struct bt_conn *conn, uint8_t reason)
-{
-    char addr[BT_ADDR_LE_STR_LEN];
-    
-    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-    LOG_INF("Disconnected from %s (reason 0x%02x)", addr, reason);
-    
-    if (mipe_conn == conn) {
-        bt_conn_unref(mipe_conn);
-        mipe_conn = NULL;
-        
-        /* Stop RSSI timer */
-        k_timer_stop(&rssi_timer);
-        
-        /* Notify callback */
-        if (mipe_conn_callback) {
-            mipe_conn_callback(false);
-        }
-        
-        /* Restart scanning */
-        ble_central_start_scan();
-    }
-}
-
-int ble_central_init(mipe_connection_cb_t conn_cb, mipe_rssi_cb_t rssi_cb)
-{
-    if (!conn_cb || !rssi_cb) {
-        LOG_ERR("Invalid callbacks provided");
+    if (!rssi_cb) {
+        LOG_ERR("Invalid callback provided");
         return -EINVAL;
     }
 
-    mipe_conn_callback = conn_cb;
     mipe_rssi_callback = rssi_cb;
 
-    /* Register connection callbacks */
-    bt_conn_cb_register(&conn_callbacks);
-
-    /* Initialize RSSI measurement timer and work */
-    k_timer_init(&rssi_timer, rssi_timer_handler, NULL);
-    k_work_init(&rssi_work, rssi_work_handler);
-
-    LOG_INF("BLE Central REAL VERSION initialized, mipe_conn is %s", mipe_conn ? "not NULL" : "NULL");
+    LOG_INF("BLE Central BEACON MODE initialized");
     return 0;
 }
 
@@ -268,71 +146,7 @@ int ble_central_stop_scan(void)
     return 0;
 }
 
-int ble_central_disconnect_mipe(void)
-{
-    int err;
-    
-    if (!mipe_conn) {
-        LOG_WRN("Not connected to Mipe");
-        return -ENOTCONN;
-    }
-
-    err = bt_conn_disconnect(mipe_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-    if (err) {
-        LOG_ERR("Failed to disconnect: %d", err);
-        return err;
-    }
-
-    return 0;
-}
-
-int ble_central_request_rssi(void)
-{
-    if (!mipe_conn) {
-        return -ENOTCONN;
-    }
-    
-    /* Trigger immediate RSSI measurement */
-    k_work_submit(&rssi_work);
-    return 0;
-}
-
-bool ble_central_is_connected(void)
-{
-    return (mipe_conn != NULL);
-}
-
 bool ble_central_is_scanning(void)
 {
     return scanning;
-}
-
-/* RSSI measurement timer handler */
-static void rssi_timer_handler(struct k_timer *timer)
-{
-    /* Submit work to measure RSSI (can't do BT operations in timer context) */
-    k_work_submit(&rssi_work);
-}
-
-/* RSSI measurement work handler */
-static void rssi_work_handler(struct k_work *work)
-{
-    int8_t rssi;
-    
-    if (!mipe_conn) {
-        return;
-    }
-
-    /* For now, simulate RSSI as Zephyr doesn't provide direct RSSI reading API */
-    /* In a real implementation, you would use vendor-specific HCI commands */
-    rssi = -45 - (k_uptime_get_32() % 20); /* Simulated varying RSSI */
-    
-    uint32_t timestamp = k_uptime_get_32();
-    
-    LOG_DBG("Mipe RSSI: %d dBm", rssi);
-    
-    /* Forward to callback */
-    if (mipe_rssi_callback) {
-        mipe_rssi_callback(rssi, timestamp);
-    }
 }
