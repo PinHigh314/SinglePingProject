@@ -124,16 +124,34 @@ if "%rev_count%"=="" set rev_count=000
 set "rev_num=00%rev_count%"
 set "rev_num=%rev_num:~-3%"
 
-:: Get current date in YYYYMMDD format
-for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (
-    set month=%%a
-    set day=%%b
-    set year=%%c
+:: Get current date and time for versioning with proper formatting
+for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value 2^>nul') do set "dt=%%a"
+if "%dt%"=="" (
+    REM Fallback to PowerShell if wmic not available
+    for /f "tokens=1-5 delims=: " %%a in ('powershell -Command "Get-Date -Format 'yy MM dd HH mm'"') do (
+        set "YY=%%a"
+        set "MM=%%b"
+        set "DD=%%c"
+        set "HH=%%d"
+        set "Min=%%e"
+    )
+) else (
+    set "YY=%dt:~2,2%"
+    set "MM=%dt:~4,2%"
+    set "DD=%dt:~6,2%"
+    set "HH=%dt:~8,2%"
+    set "Min=%dt:~10,2%"
 )
-set datestamp=%year%%month%%day%
+
+REM Ensure 2-digit minutes
+if "%Min%"=="" set "Min=00"
+if "%Min:~1,1%"=="" set "Min=0%Min%"
+
+REM Create timestamp (YYMMDD_HHMM)
+set "timestamp=%YY%%MM%%DD%_%HH%%Min%"
 
 :: Create output filename
-set output_name=mipe_device_%description%_%datestamp%_rev%rev_num%.hex
+set output_name=Mipe_%timestamp%.hex
 
 :: Copy hex file to compiled_code directory
 echo Copying hex file to compiled_code directory...

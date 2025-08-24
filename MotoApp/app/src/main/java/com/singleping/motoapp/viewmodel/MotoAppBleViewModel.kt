@@ -14,11 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.math.sin
-import kotlin.random.Random
 
 /**
- * Enhanced ViewModel that supports both real BLE and simulation modes
+ * ViewModel for managing BLE connections and data streaming
  */
 class MotoAppBleViewModel(application: Application) : AndroidViewModel(application) {
     
@@ -29,10 +27,6 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     // BLE components
     private val bleManager = HostBleManager(application)
     private val bleScanner = BleScanner(application)
-    
-    // Operation mode
-    private val _useRealBle = MutableStateFlow(true) // Default to real BLE
-    val useRealBle: StateFlow<Boolean> = _useRealBle.asStateFlow()
     
     // State flows for UI
     private val _connectionState = MutableStateFlow(ConnectionState())
@@ -55,6 +49,13 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     private val _logHistory = MutableStateFlow<List<String>>(emptyList())
     val logHistory: StateFlow<List<String>> = _logHistory.asStateFlow()
+
+    // Logging state
+    private val _loggingData = MutableStateFlow<List<LogData>>(emptyList())
+    val loggingData: StateFlow<List<LogData>> = _loggingData.asStateFlow()
+
+    private val _logStats = MutableStateFlow(LogStats())
+    val logStats: StateFlow<LogStats> = _logStats.asStateFlow()
     
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -63,10 +64,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     private var connectionJob: Job? = null
     private var streamingJob: Job? = null
     private var connectionTimeJob: Job? = null
-    
-    // Simulation parameters
-    private var baseRssi = -55f
-    private var simulationTime = 0L
+    private var logStatsJob: Job? = null
     
     init {
         // Set up BLE callbacks
@@ -75,9 +73,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         // Monitor BLE connection state
         viewModelScope.launch {
             bleManager.connectionState.collect { isConnected ->
-                if (_useRealBle.value) {
-                    handleBleConnectionChange(isConnected)
-                }
+                handleBleConnectionChange(isConnected)
             }
         }
     }
@@ -105,26 +101,9 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
     
-    /**
-     * Toggle between real BLE and simulation mode
-     */
-    fun toggleMode() {
-        viewModelScope.launch {
-            if (_connectionState.value.isConnected) {
-                disconnect()
-            }
-            _useRealBle.value = !_useRealBle.value
-            _errorMessage.value = if (_useRealBle.value) {
-                "Switched to Real BLE mode"
-            } else {
-                "Switched to Simulation mode"
-            }
-            Log.i(TAG, "Mode changed to: ${if (_useRealBle.value) "Real BLE" else "Simulation"}")
-        }
-    }
     
     /**
-     * Toggle connection (works for both real and simulated)
+     * Toggle connection
      */
     fun toggleConnection() {
         if (_connectionState.value.isConnected) {
@@ -135,11 +114,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     private fun connect() {
-        if (_useRealBle.value) {
-            connectRealBle()
-        } else {
-            connectSimulated()
-        }
+        connectRealBle()
     }
     
     private fun connectRealBle() {
@@ -164,7 +139,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
                 Log.i(TAG, "Starting BLE scan for host device")
                 bleScanner.scanForHost(
                     onDeviceFound = { device ->
-                        Log.i(TAG, "Device found: ${device.name} (${device.address})")
+                        Log.i(TAG, "Device found: ${device.address}")
                         viewModelScope.launch {
                             connectToDevice(device)
                         }
@@ -188,7 +163,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     private suspend fun connectToDevice(device: BluetoothDevice) {
         try {
-            _errorMessage.value = "Connecting to ${device.name}..."
+            _errorMessage.value = "Connecting to device..."
             
             // Connect using BLE Manager
             bleManager.connect(device)
@@ -229,35 +204,6 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
     
-    private fun connectSimulated() {
-        connectionJob?.cancel()
-        connectionJob = viewModelScope.launch {
-            // Update state to connecting
-            _connectionState.value = _connectionState.value.copy(
-                isConnecting = true,
-                isConnected = false
-            )
-            _errorMessage.value = "Simulating connection..."
-            
-            // Simulate discovery time (2-3 seconds)
-            delay(Random.nextLong(2000, 3000))
-            
-            // Simulate connection establishment (1-2 seconds)
-            delay(Random.nextLong(1000, 2000))
-            
-            // Connection successful
-            val connectionTime = System.currentTimeMillis()
-            _connectionState.value = _connectionState.value.copy(
-                isConnecting = false,
-                isConnected = true,
-                connectionTime = connectionTime
-            )
-            _errorMessage.value = "Simulated connection established"
-            
-            // Start updating connection time
-            startConnectionTimer()
-        }
-    }
     
     private fun disconnect() {
         // Cancel all jobs
@@ -265,18 +211,15 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         streamingJob?.cancel()
         connectionTimeJob?.cancel()
         
-        if (_useRealBle.value) {
-            // Disconnect BLE
-            bleScanner.stopScan()
-            bleManager.disconnect().enqueue()
-        }
+        // Disconnect BLE
+        bleScanner.stopScan()
+        bleManager.disconnect().enqueue()
         
         // Reset states
         _connectionState.value = ConnectionState()
         _streamState.value = StreamState()
         _rssiHistory.value = emptyList()
         _distanceData.value = DistanceData()
-        simulationTime = 0L
         _errorMessage.value = null
     }
     
@@ -301,12 +244,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     private fun startDataStream() {
         if (!_connectionState.value.isConnected) return
-        
-        if (_useRealBle.value) {
-            startRealDataStream()
-        } else {
-            startSimulatedDataStream()
-        }
+        startRealDataStream()
     }
     
     private fun startRealDataStream() {
@@ -317,6 +255,9 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
                 _streamState.value = _streamState.value.copy(isStreaming = true)
                 _errorMessage.value = "Data streaming started"
                 
+                // Start logging when streaming begins
+                startLogging()
+                
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start data stream", e)
                 _errorMessage.value = "Failed to start streaming: ${e.message}"
@@ -324,41 +265,23 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
     
-    private fun startSimulatedDataStream() {
-        streamingJob?.cancel()
-        streamingJob = viewModelScope.launch {
-            _streamState.value = _streamState.value.copy(isStreaming = true)
-            _errorMessage.value = "Simulated streaming started"
-            
-            while (_streamState.value.isStreaming) {
-                // Generate simulated RSSI data
-                val rssiValue = generateSimulatedRssi()
-                val timestamp = System.currentTimeMillis()
-                
-                handleRssiData(rssiValue, timestamp)
-                
-                // Wait for next update (100ms)
-                delay(_streamState.value.updateRate.toLong())
-                simulationTime += _streamState.value.updateRate
-            }
-        }
-    }
     
     private fun stopDataStream() {
         streamingJob?.cancel()
         
-        if (_useRealBle.value) {
-            viewModelScope.launch {
-                try {
-                    bleManager.stopDataStream()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to stop data stream", e)
-                }
+        viewModelScope.launch {
+            try {
+                bleManager.stopDataStream()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stop data stream", e)
             }
         }
         
         _streamState.value = _streamState.value.copy(isStreaming = false)
         _errorMessage.value = "Data streaming stopped"
+        
+        // Stop logging when streaming ends
+        stopLogging()
     }
     
     private fun handleRealRssiData(rssi: Int, timestamp: Long) {
@@ -384,23 +307,68 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         _hostInfo.value = _hostInfo.value.copy(
             signalStrength = rssiValue
         )
+        
+        // Log the data if streaming is active
+        if (_streamState.value.isStreaming) {
+            logData(rssiValue, distance)
+        }
     }
     
-    private fun generateSimulatedRssi(): Float {
-        // Create realistic RSSI variations
-        // Base RSSI slowly varies to simulate movement
-        baseRssi += (Random.nextFloat() - 0.5f) * 0.5f
-        baseRssi = baseRssi.coerceIn(-75f, -40f)
+    private fun logData(rssi: Float, distance: Float) {
+        val logEntry = LogData(
+            rssi = rssi,
+            distance = distance,
+            hostInfo = _hostInfo.value,
+            mipeStatus = _mipeStatus.value
+        )
         
-        // Add periodic variation (simulate walking pattern)
-        val periodicVariation = sin(simulationTime / 2000.0) * 5.0
+        // Add to logging data (keep last 1000 samples)
+        val updatedLogs = (_loggingData.value + logEntry).takeLast(1000)
+        _loggingData.value = updatedLogs
         
-        // Add random noise (±2 dBm)
-        val noise = (Random.nextFloat() - 0.5f) * 4f
-        
-        val rssi = (baseRssi + periodicVariation + noise).toFloat()
-        return rssi.coerceIn(-80f, -30f)
+        // Update log statistics
+        updateLogStats()
     }
+    
+    private fun updateLogStats() {
+        val currentStats = _logStats.value
+        val totalSamples = _loggingData.value.size
+        val currentTime = System.currentTimeMillis()
+        
+        val samplesPerSecond = if (currentStats.startTime > 0 && totalSamples > 0) {
+            val elapsedSeconds = (currentTime - currentStats.startTime) / 1000f
+            totalSamples / elapsedSeconds
+        } else 0f
+        
+        _logStats.value = currentStats.copy(
+            totalSamples = totalSamples,
+            samplesPerSecond = samplesPerSecond,
+            isLogging = _streamState.value.isStreaming
+        )
+    }
+    
+    fun startLogging() {
+        _logStats.value = LogStats(startTime = System.currentTimeMillis())
+    }
+    
+    fun stopLogging() {
+        // Preserve the total samples count when stopping logging
+        val currentStats = _logStats.value
+        _logStats.value = currentStats.copy(
+            isLogging = false,
+            samplesPerSecond = 0f
+        )
+    }
+    
+    fun clearLogData() {
+        _loggingData.value = emptyList()
+        _logStats.value = LogStats()
+    }
+    
+    fun exportLogData(): List<LogData> {
+        return _loggingData.value
+    }
+    
     
     private fun updateDistanceData(newDistance: Float) {
         val currentData = _distanceData.value

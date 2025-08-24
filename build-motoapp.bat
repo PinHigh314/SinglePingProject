@@ -15,8 +15,18 @@ if not exist "gradlew.bat" (
     exit /b 1
 )
 
-echo Cleaning previous build...
-call gradlew.bat clean
+echo Gracefully stopping Gradle Daemon...
+call gradlew.bat --stop >nul 2>&1
+
+echo Cleaning previous build thoroughly...
+call gradlew.bat clean --rerun-tasks
+
+REM If clean fails due to file locking, use administrative delete as fallback
+if %ERRORLEVEL% NEQ 0 (
+    echo Build directory locked, using administrative delete...
+    powershell -Command "Start-Process cmd -ArgumentList '/c rmdir /s /q \"app\build\"' -Verb RunAs -WindowStyle Hidden" >nul 2>&1
+    timeout /t 2 /nobreak >nul
+)
 
 echo.
 echo Building MotoApp...
@@ -41,27 +51,34 @@ if not exist "app\build\outputs\apk\debug\app-debug.apk" (
 echo.
 echo Build successful!
 
-REM Get current date and time for versioning
-for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
-set "YY=%dt:~2,2%"
-set "MM=%dt:~4,2%"
-set "DD=%dt:~6,2%"
-set "HH=%dt:~8,2%"
-set "Min=%dt:~10,2%"
-
-REM Create timestamp
-set "timestamp=%YY%%MM%%DD%_%HH%%Min%"
-
-REM Get next version number
-set /a version=36
-:findversion
-if exist "..\compiled_code\MotoApp_v3.%version%_*.apk" (
-    set /a version+=1
-    goto findversion
+REM Get current date and time for versioning with proper formatting
+for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value 2^>nul') do set "dt=%%a"
+if "%dt%"=="" (
+    REM Fallback to PowerShell if wmic not available
+    for /f "tokens=1-5 delims=: " %%a in ('powershell -Command "Get-Date -Format 'yy MM dd HH mm'"') do (
+        set "YY=%%a"
+        set "MM=%%b"
+        set "DD=%%c"
+        set "HH=%%d"
+        set "Min=%%e"
+    )
+) else (
+    set "YY=%dt:~2,2%"
+    set "MM=%dt:~4,2%"
+    set "DD=%dt:~6,2%"
+    set "HH=%dt:~8,2%"
+    set "Min=%dt:~10,2%"
 )
 
-REM Copy APK with version and timestamp
-set "filename=MotoApp_v3.%version%_%timestamp%.apk"
+REM Ensure 2-digit minutes
+if "%Min%"=="" set "Min=00"
+if "%Min:~1,1%"=="" set "Min=0%Min%"
+
+REM Create timestamp (YYMMDD_HHMM)
+set "timestamp=%YY%%MM%%DD%_%HH%%Min%"
+
+REM Copy APK with timestamp
+set "filename=MotoApp_%timestamp%.apk"
 echo.
 echo Copying APK to compiled_code\%filename%...
 copy "app\build\outputs\apk\debug\app-debug.apk" "..\compiled_code\%filename%"

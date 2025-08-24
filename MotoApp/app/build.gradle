@@ -44,6 +44,10 @@ android {
             excludes += ['META-INF/LICENSE.md', 'META-INF/LICENSE-notice.md']
         }
     }
+    
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 dependencies {

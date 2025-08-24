@@ -38,6 +38,22 @@ data class HostInfo(
     val signalStrength: Float = -45f // dBm
 )
 
+// Logging data classes
+data class LogData(
+    val timestamp: Long = System.currentTimeMillis(),
+    val rssi: Float,
+    val distance: Float,
+    val hostInfo: HostInfo,
+    val mipeStatus: MipeStatus?
+)
+
+data class LogStats(
+    val totalSamples: Int = 0,
+    val samplesPerSecond: Float = 0f,
+    val startTime: Long = 0L,
+    val isLogging: Boolean = false
+)
+
 // Helper functions
 fun getDistanceColor(rssi: Float): Color {
     return when {

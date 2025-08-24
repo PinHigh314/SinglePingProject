@@ -363,3 +363,8 @@
 24/08/2025  6.54.11,85 - Built: host_device_build_082025.hex 
 24/08/2025  7.23.37,36 - Built: host_device_build_082025.hex 
 24/08/2025  7.49.11,85 - Built: host_device_build_082025.hex 
+24/08/2025  8.32.09,22 - Built: host_device_build_082025.hex 
+24/08/2025  8.35.36,74 - Built: host_device_build_082025.hex 
+24/08/2025  8.43.21,02 - Built: host_device_build_082025.hex 
+24/08/2025 10.35.30,14 - Built: Mipe_250824_1035.hex 
+24/08/2025 10.39.41,11 - Built: Host_250824_1039.hex 

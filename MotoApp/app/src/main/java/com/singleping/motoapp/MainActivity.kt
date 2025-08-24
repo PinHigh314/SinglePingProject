@@ -15,14 +15,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
-import androidx.core.content.ContextCompat
-import com.singleping.motoapp.ui.screens.MainScreen
-import com.singleping.motoapp.ui.screens.DebugScreen
-import com.singleping.motoapp.ui.theme.SinglePingMotoAppTheme
-import com.singleping.motoapp.viewmodel.MotoAppBleViewModel
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
+import com.singleping.motoapp.ui.screens.LogViewerScreen
+import com.singleping.motoapp.ui.screens.MainScreen
+import com.singleping.motoapp.ui.theme.SinglePingMotoAppTheme
+import com.singleping.motoapp.viewmodel.MotoAppBleViewModel
+
+enum class Screen {
+    MAIN, LOG_VIEWER
+}
 
 class MainActivity : ComponentActivity() {
     
@@ -44,8 +48,7 @@ class MainActivity : ComponentActivity() {
                 "Missing permissions: ${deniedPermissions.joinToString(", ")}\nBLE scanning will not work without these permissions!", 
                 Toast.LENGTH_LONG
             ).show()
-            // Switch to simulation mode if permissions denied
-            viewModel.toggleMode()
+            // BLE scanning will not work without permissions
         }
     }
     
@@ -73,8 +76,23 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Use the main screen now that BLE is working
-                    MainScreen(viewModel = viewModel)
+                    // Navigation state
+                    val currentScreen = remember { mutableStateOf(Screen.MAIN) }
+                    
+                    when (currentScreen.value) {
+                        Screen.MAIN -> {
+                            MainScreen(
+                                viewModel = viewModel,
+                                onViewLogs = { currentScreen.value = Screen.LOG_VIEWER }
+                            )
+                        }
+                        Screen.LOG_VIEWER -> {
+                            LogViewerScreen(
+                                viewModel = viewModel,
+                                onBack = { currentScreen.value = Screen.MAIN }
+                            )
+                        }
+                    }
                 }
             }
         }

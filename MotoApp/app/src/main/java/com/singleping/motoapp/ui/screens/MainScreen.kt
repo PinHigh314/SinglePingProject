@@ -6,7 +6,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,15 +40,16 @@ fun getDistanceColor(rssi: Float): Color {
 
 @Composable
 fun MainScreen(
-    viewModel: MotoAppBleViewModel
+    viewModel: MotoAppBleViewModel,
+    onViewLogs: () -> Unit = {}
 ) {
     val connectionState by viewModel.connectionState.collectAsState()
     val streamState by viewModel.streamState.collectAsState()
     val rssiHistory by viewModel.rssiHistory.collectAsState()
     val distanceData by viewModel.distanceData.collectAsState()
     val hostInfo by viewModel.hostInfo.collectAsState()
-    val useRealBle by viewModel.useRealBle.collectAsState()
     val mipeStatus by viewModel.mipeStatus.collectAsState()
+    val logStats by viewModel.logStats.collectAsState()
     
     // Update connection time display
     var connectionTimeDisplay by remember { mutableStateOf("00:00:00") }
@@ -68,37 +68,14 @@ fun MainScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Title with mode indicator
-        Row(
+        // Title
+        Text(
+            text = "MotoApp TMT1",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "MotoApp TMT1",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-            
-            // Mode toggle chip
-            FilterChip(
-                selected = useRealBle,
-                onClick = { viewModel.toggleMode() },
-                label = { 
-                    Text(
-                        text = if (useRealBle) "Real BLE" else "Simulation",
-                        fontSize = 12.sp
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = if (useRealBle) Icons.Default.Bluetooth else Icons.Default.Memory,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            )
-        }
+            textAlign = TextAlign.Center
+        )
         
         // 1. Host Connection Section
         ConnectionSection(
@@ -134,12 +111,19 @@ fun MainScreen(
             }
         }
 
-        // 4. Host Status Section
+        // 4. Logging Banner
+        LoggingBanner(
+            logStats = logStats,
+            onViewLogs = onViewLogs,
+            onExportData = { /* TODO: Implement export functionality */ }
+        )
+
+        // 5. Host Status Section
         mipeStatus?.let {
             HostStatusSection(status = it)
         }
         
-        // 5. Status Display Panel
+        // 6. Status Display Panel
         StatusPanel(
             connectionState = connectionState,
             streamState = streamState,
@@ -147,7 +131,7 @@ fun MainScreen(
             connectionTimeDisplay = connectionTimeDisplay
         )
         
-        // 5. Distance Calculation Section
+        // 7. Distance Calculation Section
         DistanceSection(
             distanceData = distanceData,
             currentRssi = hostInfo.signalStrength
@@ -223,6 +207,89 @@ fun ConnectionSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun LoggingBanner(
+    logStats: LogStats,
+    onViewLogs: () -> Unit,
+    onExportData: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Data Logging",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium
+            )
+            
+            // Status and Statistics Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Sample Counter
+                Column {
+                    Text(
+                        text = "📊 ${logStats.totalSamples} Samples",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (logStats.samplesPerSecond > 0) {
+                        Text(
+                            text = "${String.format("%.1f", logStats.samplesPerSecond)}/sec",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                // Status Indicator
+                Text(
+                    text = if (logStats.isLogging) "✅ Active" else "⏸️ Paused",
+                    fontSize = 12.sp,
+                    color = if (logStats.isLogging) Color(0xFF4CAF50) else Color.Gray
+                )
+            }
+            
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // View Logs Button
+                Button(
+                    onClick = onViewLogs,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2196F3)
+                    ),
+                    enabled = logStats.totalSamples > 0
+                ) {
+                    Text("👁️ View Logs")
+                }
+                
+                // Export Button
+                Button(
+                    onClick = onExportData,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4CAF50)
+                    ),
+                    enabled = logStats.totalSamples > 0
+                ) {
+                    Text("💾 Export")
+                }
             }
         }
     }

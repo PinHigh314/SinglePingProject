@@ -318,3 +318,97 @@ cd Host/host_device
 - `BUILD_INSTRUCTIONS.md` - Complete guide to using universal build script
 - Clear examples and explanations
 - No more confusion about which script to use
+
+## August 24, 2025 - MotoApp Build Script Refinements
+
+### Critical Issue Resolved: Gradle Daemon Connection Loss
+**Problem**: The previous approach of killing all Java processes was too heavy-handed and caused:
+1. **Gradle Server Connection Loss**: "No connection to gradle server" errors
+2. **Performance Impact**: Killing all Java processes affected other running applications
+3. **Unnecessary Aggression**: Overkill solution for a targeted problem
+
+**Root Cause Analysis**:
+- The Gradle Daemon runs in background to speed up builds by keeping compiled classes in memory
+- When interrupted or crashed, it can hold file locks on the build directory
+- Killing ALL Java processes disrupts the Gradle server connection and affects other applications
+
+**Refined Solution Implemented**:
+
+1. **Graceful Gradle Daemon Management**:
+```batch
+echo Gracefully stopping Gradle Daemon...
+call gradlew.bat --stop >nul 2>&1
+```
+
+2. **Targeted File Lock Resolution**:
+```batch
+REM If clean fails due to file locking, use administrative delete as fallback
+if %ERRORLEVEL% NEQ 0 (
+    echo Build directory locked, using administrative delete...
+    powershell -Command "Start-Process cmd -ArgumentList '/c rmdir /s /q \"app\build\"' -Verb RunAs -WindowStyle Hidden" >nul 2>&1
+    timeout /t 2 /nobreak >nul
+)
+```
+
+3. **Consistent Timestamp Naming Across All Builds**:
+- Applied same timestamp format to MotoApp, Mipe, and Host build scripts
+- Standardized naming: `MotoApp_YYMMDD_HHMM.apk`, `Mipe_YYMMDD_HHMM.hex`, `Host_YYMMDD_HHMM.hex`
+
+**Key Learning**: 
+- Use `gradlew --stop` to gracefully stop the Gradle Daemon instead of killing Java processes
+- Only use administrative file deletion as a fallback when graceful methods fail
+- Keep the Gradle server connection intact for better build performance
+- Standardize naming conventions across all project components
+
+### Build Process Now Works Elegantly
+**Before**: Heavy-handed process killing causing Gradle server disconnections
+**After**: Graceful daemon management with targeted fallback solutions
+
+**Build Command**:
+```batch
+build-motoapp.bat
+```
+
+**Output**: Clean APK files with consistent naming, no server connection issues
+
+### Universal Timestamp Implementation
+All build scripts now use the same reliable timestamp generation:
+
+**MotoApp**: `MotoApp_250824_1023.apk`  
+**Mipe Device**: `Mipe_250824_1023.hex`  
+**Host Device**: `Host_250824_1023.hex`
+
+**Timestamp Generation**:
+```batch
+:: Get current date and time for versioning with proper formatting
+for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value 2^>nul') do set "dt=%%a"
+if "%dt%"=="" (
+    REM Fallback to PowerShell if wmic not available
+    for /f "tokens=1-5 delims=: " %%a in ('powershell -Command "Get-Date -Format 'yy MM dd HH mm'"') do (
+        set "YY=%%a"
+        set "MM=%%b"
+        set "DD=%%c"
+        set "HH=%%d"
+        set "Min=%%e"
+    )
+) else (
+    set "YY=%dt:~2,2%"
+    set "MM=%dt:~4,2%"
+    set "DD=%dt:~6,2%"
+    set "HH=%dt:~8,2%"
+    set "Min=%dt:~10,2%"
+)
+
+REM Ensure 2-digit minutes
+if "%Min%"=="" set "Min=00"
+if "%Min:~1,1%"=="" set "Min=0%Min%"
+
+REM Create timestamp (YYMMDD_HHMM)
+set "timestamp=%YY%%MM%%DD%_%HH%%Min%"
+```
+
+### Next Steps for Build System
+1. Monitor Gradle Daemon behavior for further optimizations
+2. Consider implementing build cache management
+3. Add build success metrics and performance tracking
+4. Document best practices for multi-project build coordination
