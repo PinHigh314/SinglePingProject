@@ -206,27 +206,25 @@ static int get_rssi_data(int8_t *rssi, uint32_t *timestamp)
         return -ENODATA;
     }
     
-    int8_t rssi_to_send;
-    
-    /* Send real RSSI from Mipe if available, otherwise use simulated value */
+    /* Only send data if we have a real RSSI from Mipe */
     if (mipe_connected && latest_mipe_timestamp > 0) {
         /* Use actual Mipe RSSI */
-        rssi_to_send = latest_mipe_rssi;
+        int8_t rssi_to_send = latest_mipe_rssi;
         log_ble("TX RSSI: %d dBm (from Mipe)", rssi_to_send);
+        
+        /* Flash LED2 to indicate RSSI transmission */
+        gpio_pin_set_dt(&led2, 1);
+        k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
+        
+        *rssi = rssi_to_send;
+        *timestamp = k_uptime_get_32();
+        
+        return 0;
     } else {
-        /* Use simulated RSSI when Mipe not connected */
-        rssi_to_send = -50;
-        log_ble("TX RSSI: %d dBm (Simulated)", rssi_to_send);
+        /* No Mipe beacon detected - don't send any data */
+        log_ble("No Mipe beacon detected - skipping RSSI transmission");
+        return -ENODATA;
     }
-    
-    /* Flash LED2 to indicate RSSI transmission */
-    gpio_pin_set_dt(&led2, 1);
-    k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
-    
-    *rssi = rssi_to_send;
-    *timestamp = k_uptime_get_32();
-    
-    return 0;
 }
 
 static int init_leds(void)
