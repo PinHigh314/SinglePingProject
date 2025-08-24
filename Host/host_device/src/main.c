@@ -59,9 +59,6 @@ static struct k_timer heartbeat_timer;
 static struct k_timer led_flash_timer;
 static struct k_timer led1_rapid_flash_timer;
 
-/* RSSI alternation flag */
-static bool use_fixed_rssi = true;
-
 /* Latest RSSI from Mipe */
 static int8_t latest_mipe_rssi = -70;
 static uint32_t latest_mipe_timestamp = 0;
@@ -80,9 +77,8 @@ static void heartbeat_timer_handler(struct k_timer *timer)
 
 static void led_flash_timer_handler(struct k_timer *timer)
 {
-    /* Turn off both RSSI indicator LEDs */
+    /* Turn off RSSI indicator LED */
     gpio_pin_set_dt(&led2, 0);
-    gpio_pin_set_dt(&led3, 0);
 }
 
 static void led1_rapid_flash_timer_handler(struct k_timer *timer)
@@ -172,9 +168,8 @@ static void app_disconnected(void)
     motoapp_connected = false;
     streaming_active = false;
     update_led1_state();
-    /* Turn off both LED2 and LED3 when disconnected */
+    /* Turn off RSSI indicator LED when disconnected */
     gpio_pin_set_dt(&led2, 0);
-    gpio_pin_set_dt(&led3, 0);
 }
 
 static void streaming_state_changed(bool active)
@@ -183,9 +178,8 @@ static void streaming_state_changed(bool active)
     streaming_active = active;
     
     if (!active) {
-        /* Turn off both LED2 and LED3 when streaming stops */
+        /* Turn off RSSI indicator LED when streaming stops */
         gpio_pin_set_dt(&led2, 0);
-        gpio_pin_set_dt(&led3, 0);
     }
 }
 
@@ -214,36 +208,20 @@ static int get_rssi_data(int8_t *rssi, uint32_t *timestamp)
     
     int8_t rssi_to_send;
     
-    /* Determine which RSSI to send */
-    if (use_fixed_rssi) {
-        /* Send fixed reference RSSI */
-        rssi_to_send = -55;
-        log_ble("TX Fixed RSSI: %d dBm (Reference)", rssi_to_send);
-        
-        /* Turn off LED2, flash LED3 for fixed RSSI */
-        gpio_pin_set_dt(&led2, 0);
-        gpio_pin_set_dt(&led3, 1);
-        k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
+    /* Send real RSSI from Mipe if available, otherwise use simulated value */
+    if (mipe_connected && latest_mipe_timestamp > 0) {
+        /* Use actual Mipe RSSI */
+        rssi_to_send = latest_mipe_rssi;
+        log_ble("TX RSSI: %d dBm (from Mipe)", rssi_to_send);
     } else {
-        /* Send real RSSI */
-        if (mipe_connected && latest_mipe_timestamp > 0) {
-            /* Use actual Mipe RSSI */
-            rssi_to_send = latest_mipe_rssi;
-            log_ble("TX Real RSSI: %d dBm (from Mipe)", rssi_to_send);
-        } else {
-            /* Use simulated RSSI when Mipe not connected */
-            rssi_to_send = -45 - (k_uptime_get_32() % 20);
-            log_ble("TX Real RSSI: %d dBm (Simulated)", rssi_to_send);
-        }
-        
-        /* Turn off LED3, flash LED2 for real RSSI */
-        gpio_pin_set_dt(&led3, 0);
-        gpio_pin_set_dt(&led2, 1);
-        k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
+        /* Use simulated RSSI when Mipe not connected */
+        rssi_to_send = -50;
+        log_ble("TX RSSI: %d dBm (Simulated)", rssi_to_send);
     }
     
-    /* Toggle for next transmission */
-    use_fixed_rssi = !use_fixed_rssi;
+    /* Flash LED2 to indicate RSSI transmission */
+    gpio_pin_set_dt(&led2, 1);
+    k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
     
     *rssi = rssi_to_send;
     *timestamp = k_uptime_get_32();
@@ -367,8 +345,7 @@ int main(void)
     log_ble("LED Status:");
     log_ble("  LED0: Heartbeat (blinking)");
     log_ble("  LED1: OFF=No connection, Solid=MotoApp only, Flash=Both connected");
-    log_ble("  LED2: Flash when transmitting real RSSI");
-    log_ble("  LED3: Flash when transmitting fixed RSSI (-55 dBm)");
+    log_ble("  LED2: Flash when transmitting RSSI data");
 
     /* Main loop */
     while (1) {
