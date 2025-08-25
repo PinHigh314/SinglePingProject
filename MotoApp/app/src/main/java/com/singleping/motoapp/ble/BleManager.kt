@@ -143,6 +143,8 @@ class HostBleManager(context: Context) : BleManager(context) {
     }
 
     private fun handleMipeStatusData(data: Data) {
+        Log.d(TAG, "Received Mipe status data: size=${data.size()}, bytes=${data.value?.joinToString("") { "%02X".format(it) }}")
+        
         if (data.size() >= 12) {
             val connectionStateValue = data.getByte(0)?.toInt() ?: 0
             val rssi = data.getByte(1)?.toInt() ?: 0
@@ -169,7 +171,12 @@ class HostBleManager(context: Context) : BleManager(context) {
                         .wrap(batteryBytes)
                         .order(java.nio.ByteOrder.LITTLE_ENDIAN)
                         .float
+                    Log.d(TAG, "Battery voltage parsed: $batteryVoltage V from bytes ${batteryBytes.joinToString("") { "%02X".format(it) }}")
+                } else {
+                    Log.d(TAG, "Battery bytes not available or incorrect size")
                 }
+            } else {
+                Log.d(TAG, "Data size too small for battery voltage: ${data.size()} < 16")
             }
 
             val status = MipeStatus(
@@ -181,7 +188,10 @@ class HostBleManager(context: Context) : BleManager(context) {
                 lastSeen = System.currentTimeMillis(),
                 batteryVoltage = batteryVoltage
             )
+            Log.d(TAG, "Mipe status created: $status")
             onMipeStatusReceived?.invoke(status)
+        } else {
+            Log.d(TAG, "Mipe status data too small: ${data.size()} < 12")
         }
     }
     
