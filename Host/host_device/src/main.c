@@ -156,6 +156,7 @@ static void update_mipe_status(void)
     temp_status.last_scan_timestamp = k_uptime_get_32();
     temp_status.connection_attempts = mipe_connection_attempts;
 
+    log_ble("Updating mipe status - battery: %.2fV", temp_status.battery_voltage);
     ble_peripheral_update_mipe_status(&temp_status);
 }
 
