@@ -173,10 +173,8 @@ static void handle_mipe_sync(void)
     /* For now, simulate a successful sync with mock data */
     k_sleep(K_MSEC(2000));  /* 2000ms timeout as requested */
     
-    /* Update mipe status with random battery data (1.80V - 3.70V range) */
-    /* Generate random voltage between 1.80 and 3.70 volts */
-    float random_voltage = 1.80f + (k_cycle_get_32() % 191) / 100.0f; /* 191 = 370-180+1 */
-    mipe_status.battery_voltage = random_voltage;
+    /* Use constant battery value for testing Host-to-App communication */
+    mipe_status.battery_voltage = 3.30f;  /* Constant test value */
     mipe_status.connection_duration = 2;  /* 2 second connection */
     strncpy(mipe_status.connection_state, "Connected", sizeof(mipe_status.connection_state) - 1);
     mipe_status.connection_state[sizeof(mipe_status.connection_state) - 1] = '\0';
@@ -184,7 +182,7 @@ static void handle_mipe_sync(void)
     mipe_status.device_address[sizeof(mipe_status.device_address) - 1] = '\0';
     
     log_ble("MIPE SYNC COMPLETE");
-    log_ble("Battery: %.2fv, Duration: 2s", random_voltage);
+    log_ble("Battery: 3.30v (constant test), Duration: 2s");
     
     /* Turn off LED3 after sync completion */
     gpio_pin_set_dt(&led3, 0);
