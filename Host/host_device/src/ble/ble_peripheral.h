@@ -17,6 +17,10 @@ typedef struct {
     int8_t rssi;
     uint32_t last_scan_timestamp;
     uint16_t connection_attempts;
+    float battery_voltage;
+    uint16_t connection_duration;
+    char connection_state[16];
+    char device_address[18];
 } mipe_status_t;
 
 /**
@@ -44,17 +48,24 @@ typedef void (*streaming_state_cb_t)(bool active);
 typedef int (*get_rssi_data_cb_t)(int8_t *rssi, uint32_t *timestamp);
 
 /**
+ * @brief Callback function for Mipe sync command
+ */
+typedef void (*mipe_sync_cb_t)(void);
+
+/**
  * @brief Initialize BLE peripheral with callbacks
  * @param conn_cb Callback for connection events
  * @param disconn_cb Callback for disconnection events
  * @param stream_cb Callback for streaming state changes
  * @param rssi_cb Callback to get RSSI data
+ * @param mipe_sync_cb Callback for Mipe sync command
  * @return 0 on success, negative error code on failure
  */
 int ble_peripheral_init(app_connected_cb_t conn_cb, 
                        app_disconnected_cb_t disconn_cb,
                        streaming_state_cb_t stream_cb, 
-                       get_rssi_data_cb_t rssi_cb);
+                       get_rssi_data_cb_t rssi_cb,
+                       mipe_sync_cb_t mipe_sync_cb);
 
 /**
  * @brief Start BLE advertising

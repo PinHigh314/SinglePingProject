@@ -89,6 +89,13 @@ fun MainScreen(
             isConnected = connectionState.isConnected,
             onToggleStream = { viewModel.toggleDataStream() }
         )
+
+        // 2.5 Mipe Sync Control Section
+        MipeSyncSection(
+            isStreaming = streamState.isStreaming,
+            onSyncMipe = { viewModel.syncWithMipe() },
+            batteryVoltage = mipeStatus?.batteryVoltage
+        )
         
         // 3. Real-Time RSSI Graph
         Card(
@@ -209,6 +216,49 @@ fun ConnectionSection(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun MipeSyncSection(
+    isStreaming: Boolean,
+    onSyncMipe: () -> Unit,
+    batteryVoltage: Float? = null
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(
+            onClick = onSyncMipe,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFFFA000), // Orange color for sync
+                disabledContainerColor = Color.Gray
+            ),
+            enabled = !isStreaming // Only disable during streaming, enable otherwise
+        ) {
+            Text(
+                text = "🔗 SYNC WITH MIPE",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        
+        // Battery voltage display
+        Text(
+            text = if (batteryVoltage != null) {
+                "🔋 ${String.format("%.2f", batteryVoltage)}V"
+            } else {
+                "🔋 ---"
+            },
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (batteryVoltage != null) Color(0xFF4CAF50) else Color.Gray
+        )
     }
 }
 
@@ -622,6 +672,22 @@ fun HostStatusSection(status: MipeStatus) {
             ) {
                 Text("Connection Duration:")
                 Text("${status.connectionDuration}s")
+            }
+            
+            // Battery voltage display in status section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Battery Voltage:")
+                Text(
+                    text = if (status.batteryVoltage != null) {
+                        "${String.format("%.2f", status.batteryVoltage)}V"
+                    } else {
+                        "---"
+                    },
+                    color = if (status.batteryVoltage != null) Color(0xFF4CAF50) else Color.Gray
+                )
             }
         }
     }

@@ -6,5 +6,6 @@ data class MipeStatus(
     val deviceName: String?,
     val deviceAddress: String?,
     val connectionDuration: Long,
-    val lastSeen: Long
+    val lastSeen: Long,
+    val batteryVoltage: Float? = null
 )

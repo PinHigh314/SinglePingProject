@@ -400,6 +400,28 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     fun clearError() {
         _errorMessage.value = null
     }
+
+    /**
+     * Sync with Mipe device - Phase 1 implementation
+     * This will trigger Host to connect to Mipe for battery reading and time sync
+     */
+    fun syncWithMipe() {
+        viewModelScope.launch {
+            try {
+                if (!_connectionState.value.isConnected) {
+                    _errorMessage.value = "Please connect to Host device first"
+                    return@launch
+                }
+                
+                _errorMessage.value = "Requesting Mipe sync..."
+                bleManager.syncWithMipe()
+                _errorMessage.value = "Mipe sync requested successfully"
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync with Mipe", e)
+                _errorMessage.value = "Sync failed: ${e.message}"
+            }
+        }
+    }
     
     override fun onCleared() {
         super.onCleared()

@@ -39,6 +39,7 @@ class HostBleManager(context: Context) : BleManager(context) {
         const val CMD_START_STREAM: Byte = 0x01
         const val CMD_STOP_STREAM: Byte = 0x02
         const val CMD_GET_STATUS: Byte = 0x03
+        const val CMD_MIPE_SYNC: Byte = 0x04
     }
     
     // Connection state
@@ -158,13 +159,27 @@ class HostBleManager(context: Context) : BleManager(context) {
                 else -> "Unknown"
             }
 
+            // Parse battery voltage if available (extended data format)
+            var batteryVoltage: Float? = null
+            if (data.size() >= 16) {
+                // Parse float bytes directly (host sends raw float bytes)
+                val batteryBytes = data.value?.sliceArray(12..15)
+                if (batteryBytes != null && batteryBytes.size == 4) {
+                    batteryVoltage = java.nio.ByteBuffer
+                        .wrap(batteryBytes)
+                        .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                        .float
+                }
+            }
+
             val status = MipeStatus(
                 connectionState = connectionState,
                 rssi = rssi,
                 deviceName = null, // Not available in the current data packet
                 deviceAddress = deviceAddress,
                 connectionDuration = connectionDuration.toLong(),
-                lastSeen = System.currentTimeMillis()
+                lastSeen = System.currentTimeMillis(),
+                batteryVoltage = batteryVoltage
             )
             onMipeStatusReceived?.invoke(status)
         }
@@ -207,6 +222,25 @@ class HostBleManager(context: Context) : BleManager(context) {
         // TODO: Implement status reading when needed
         // For now, return null as this is not critical for basic BLE functionality
         return null
+    }
+
+    /**
+     * Sync with Mipe device - Phase 1 implementation
+     * Sends a sync command to the host to connect to Mipe for battery reading
+     */
+    suspend fun syncWithMipe() {
+        controlCharacteristic?.let { characteristic ->
+            val data = Data(byteArrayOf(CMD_MIPE_SYNC))
+            writeCharacteristic(
+                characteristic,
+                data,
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            ).enqueue()
+            Log.i(TAG, "Mipe sync command sent to host")
+        } ?: run {
+            Log.w(TAG, "Cannot send sync command - control characteristic not available")
+            throw IllegalStateException("Control characteristic not available")
+        }
     }
     
     /**

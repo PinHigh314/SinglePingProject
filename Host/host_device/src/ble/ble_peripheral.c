@@ -12,10 +12,48 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/drivers/gpio.h>
 
 #include "ble_peripheral.h"
 
 LOG_MODULE_REGISTER(ble_peripheral_v8, LOG_LEVEL_INF);
+
+/* LED3 definition for MIPE_SYNC command verification */
+#define LED3_NODE DT_ALIAS(led3)
+static const struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET(LED3_NODE, gpios);
+static struct k_timer led3_flash_timer;
+
+/* LED3 flash timer handler */
+static void led3_flash_timer_handler(struct k_timer *timer)
+{
+    gpio_pin_set_dt(&led3, 0); /* Turn off LED3 */
+}
+
+/* Flash LED3 for MIPE_SYNC command verification */
+static void flash_led3_sync_indicator(void)
+{
+    /* Check if LED3 device is ready */
+    if (!gpio_is_ready_dt(&led3)) {
+        LOG_WRN("LED3 not ready for sync indication");
+        return;
+    }
+    
+    /* Configure LED3 if not already configured */
+    static bool led3_configured = false;
+    if (!led3_configured) {
+        int ret = gpio_pin_configure_dt(&led3, GPIO_OUTPUT_INACTIVE);
+        if (ret < 0) {
+            LOG_WRN("Failed to configure LED3: %d", ret);
+            return;
+        }
+        k_timer_init(&led3_flash_timer, led3_flash_timer_handler, NULL);
+        led3_configured = true;
+    }
+    
+    /* Flash LED3 for 1000ms */
+    gpio_pin_set_dt(&led3, 1); /* Turn on LED3 */
+    k_timer_start(&led3_flash_timer, K_MSEC(1000), K_NO_WAIT);
+}
 
 /* TMT1 Service UUID: 12345678-1234-5678-1234-56789abcdef0 */
 #define TMT1_SERVICE_UUID BT_UUID_DECLARE_128( \
@@ -45,6 +83,7 @@ LOG_MODULE_REGISTER(ble_peripheral_v8, LOG_LEVEL_INF);
 #define CMD_START_STREAM 0x01
 #define CMD_STOP_STREAM  0x02
 #define CMD_GET_STATUS   0x03
+#define CMD_MIPE_SYNC    0x04
 
 /* Connection state */
 static struct bt_conn *current_conn = NULL;
@@ -59,6 +98,7 @@ static void (*app_connected_cb)(void) = NULL;
 static void (*app_disconnected_cb)(void) = NULL;
 static void (*streaming_state_cb)(bool active) = NULL;
 static int (*get_rssi_data_cb)(int8_t *rssi, uint32_t *timestamp) = NULL;
+static void (*mipe_sync_cb)(void) = NULL;
 
 /* Status data */
 static uint8_t host_status[8] = {0}; /* Status response buffer */
@@ -172,7 +212,8 @@ static void tx_timer_handler(struct k_timer *timer)
 
 /* Extended API initialization */
 int ble_peripheral_init(void (*conn_cb)(void), void (*disconn_cb)(void),
-                       void (*stream_cb)(bool), int (*rssi_cb)(int8_t*, uint32_t*))
+                       void (*stream_cb)(bool), int (*rssi_cb)(int8_t*, uint32_t*),
+                       void (*mipe_sync_cb)(void))
 {
     LOG_INF("Initializing BLE Peripheral v8 for Host");
 
@@ -180,6 +221,7 @@ int ble_peripheral_init(void (*conn_cb)(void), void (*disconn_cb)(void),
     app_disconnected_cb = disconn_cb;
     streaming_state_cb = stream_cb;
     get_rssi_data_cb = rssi_cb;
+    mipe_sync_cb = mipe_sync_cb;
 
     /* Find and store the RSSI characteristic attribute */
     rssi_char_attr = &tmt1_service.attrs[2];
@@ -333,6 +375,39 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
         LOG_INF("Status requested");
         break;
         
+    case CMD_MIPE_SYNC:
+        LOG_INF("MIPE_SYNC command received - initiating Mipe connection");
+        /* Send log message to app */
+        ble_peripheral_send_log_data("MIPE_SYNC: Starting Mipe connection");
+        
+        /* Flash LED3 to indicate sync command received */
+        LOG_INF("MIPE_SYNC: Flashing LED3 for visual confirmation");
+        ble_peripheral_send_log_data("MIPE_SYNC: LED3 flash - command received");
+        flash_led3_sync_indicator(); /* Actually flash LED3 for 1000ms */
+        
+        /* Set fake battery voltage to 3.14V and send status update */
+        mipe_status.battery_voltage = 3.14f;
+        LOG_INF("MIPE_SYNC: Set battery_voltage to %.2fV", mipe_status.battery_voltage);
+        ble_peripheral_send_log_data("MIPE_SYNC: Setting fake battery voltage to 3.14V");
+        
+        int status_result = ble_peripheral_update_mipe_status(&mipe_status);
+        if (status_result == 0) {
+            LOG_INF("MIPE_SYNC: Successfully sent mipe status update with 3.14V");
+            ble_peripheral_send_log_data("MIPE_SYNC: Status update sent successfully");
+        } else {
+            LOG_WRN("MIPE_SYNC: Failed to send mipe status update (err %d)", status_result);
+            ble_peripheral_send_log_data("MIPE_SYNC: Status update failed");
+        }
+        
+        /* Call the Mipe sync callback if registered */
+        if (mipe_sync_cb) {
+            mipe_sync_cb();
+        } else {
+            LOG_WRN("MIPE_SYNC command received but no callback registered");
+            ble_peripheral_send_log_data("MIPE_SYNC: No callback registered");
+        }
+        break;
+        
     default:
         LOG_WRN("Unknown control command: 0x%02x", data[0]);
         return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
@@ -457,5 +532,33 @@ int ble_peripheral_update_mipe_status(const mipe_status_t *status)
 
     memcpy(&mipe_status, status, sizeof(mipe_status_t));
 
-    return bt_gatt_notify(current_conn, mipe_status_char_attr, &mipe_status, sizeof(mipe_status_t));
+    /* Create a properly formatted buffer for Android app compatibility */
+    uint8_t formatted_data[16] = {0};
+    
+    /* Byte 0: status_flags */
+    formatted_data[0] = mipe_status.status_flags;
+    
+    /* Byte 1: rssi */
+    formatted_data[1] = (uint8_t)mipe_status.rssi;
+    
+    /* Bytes 2-7: device address (placeholder) */
+    /* For now, use a placeholder address since we don't have real device address */
+    formatted_data[2] = 0xAA;
+    formatted_data[3] = 0xBB;
+    formatted_data[4] = 0xCC;
+    formatted_data[5] = 0xDD;
+    formatted_data[6] = 0xEE;
+    formatted_data[7] = 0xFF;
+    
+    /* Bytes 8-11: connection_duration (UINT32_LE) */
+    sys_put_le32(mipe_status.connection_duration, &formatted_data[8]);
+    
+    /* Bytes 12-15: battery_voltage (FLOAT) */
+    float battery_voltage = mipe_status.battery_voltage;
+    memcpy(&formatted_data[12], &battery_voltage, sizeof(float));
+
+    LOG_INF("Sending formatted Mipe status: flags=0x%02x, rssi=%d, batt=%.2fV", 
+            formatted_data[0], formatted_data[1], battery_voltage);
+
+    return bt_gatt_notify(current_conn, mipe_status_char_attr, formatted_data, sizeof(formatted_data));
 }

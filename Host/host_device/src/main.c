@@ -17,6 +17,7 @@
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/printk.h>
+#include <string.h>
 
 #include "ble/ble_peripheral.h"
 #include "ble/ble_central.h"
@@ -146,12 +147,49 @@ static void update_led1_state(void)
 
 static void update_mipe_status(void)
 {
-    mipe_status.status_flags = (ble_central_is_scanning() ? 1 : 0) | (mipe_connected ? 2 : 0);
-    mipe_status.rssi = mipe_connected ? latest_mipe_rssi : 0;
-    mipe_status.last_scan_timestamp = k_uptime_get_32();
-    mipe_status.connection_attempts = mipe_connection_attempts;
+    /* Only update dynamic fields, preserve battery voltage and other static data */
+    mipe_status_t temp_status = mipe_status;  // Copy current status including battery voltage
+    
+    // Update only the dynamic fields
+    temp_status.status_flags = (ble_central_is_scanning() ? 1 : 0) | (mipe_connected ? 2 : 0);
+    temp_status.rssi = mipe_connected ? latest_mipe_rssi : 0;
+    temp_status.last_scan_timestamp = k_uptime_get_32();
+    temp_status.connection_attempts = mipe_connection_attempts;
 
-    ble_peripheral_update_mipe_status(&mipe_status);
+    ble_peripheral_update_mipe_status(&temp_status);
+}
+
+/* Mipe sync operation */
+static void handle_mipe_sync(void)
+{
+    log_ble("=== MIPE SYNC STARTED ===");
+    log_ble("Turning on LED3 for sync operation");
+    
+    /* Turn on LED3 to indicate sync operation */
+    gpio_pin_set_dt(&led3, 1);
+    
+    /* TODO: Implement actual Mipe connection logic here */
+    /* For now, simulate a successful sync with mock data */
+    k_sleep(K_MSEC(2000));  /* 2000ms timeout as requested */
+    
+    /* Update mipe status with mock battery data */
+    mipe_status.battery_voltage = 3.14f;  /* Mock 3.14v battery */
+    mipe_status.connection_duration = 2;  /* 2 second connection */
+    strncpy(mipe_status.connection_state, "Connected", sizeof(mipe_status.connection_state) - 1);
+    mipe_status.connection_state[sizeof(mipe_status.connection_state) - 1] = '\0';
+    strncpy(mipe_status.device_address, "AA:BB:CC:DD:EE:FF", sizeof(mipe_status.device_address) - 1);
+    mipe_status.device_address[sizeof(mipe_status.device_address) - 1] = '\0';
+    
+    log_ble("MIPE SYNC COMPLETE");
+    log_ble("Battery: 3.14v, Duration: 2s");
+    
+    /* Turn off LED3 after sync completion */
+    gpio_pin_set_dt(&led3, 0);
+    log_ble("LED3 turned off - sync complete");
+    
+    /* Update status to reflect sync completion - send directly to ensure battery voltage is preserved */
+    mipe_status_t sync_status = mipe_status;
+    ble_peripheral_update_mipe_status(&sync_status);
 }
 
 /* BLE Peripheral callbacks */
@@ -310,7 +348,8 @@ int main(void)
 
     /* Initialize BLE Peripheral (for MotoApp connection) */
     err = ble_peripheral_init(app_connected, app_disconnected, 
-                             streaming_state_changed, get_rssi_data);
+                             streaming_state_changed, get_rssi_data,
+                             handle_mipe_sync);
     if (err) {
         LOG_ERR("Failed to initialize BLE peripheral: %d", err);
         return err;
