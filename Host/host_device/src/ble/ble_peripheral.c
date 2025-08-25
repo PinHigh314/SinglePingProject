@@ -385,20 +385,6 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
         ble_peripheral_send_log_data("MIPE_SYNC: LED3 flash - command received");
         flash_led3_sync_indicator(); /* Actually flash LED3 for 1000ms */
         
-        /* Set fake battery voltage to 3.14V and send status update */
-        mipe_status.battery_voltage = 3.14f;
-        LOG_INF("MIPE_SYNC: Set battery_voltage to %.2fV", mipe_status.battery_voltage);
-        ble_peripheral_send_log_data("MIPE_SYNC: Setting fake battery voltage to 3.14V");
-        
-        int status_result = ble_peripheral_update_mipe_status(&mipe_status);
-        if (status_result == 0) {
-            LOG_INF("MIPE_SYNC: Successfully sent mipe status update with 3.14V");
-            ble_peripheral_send_log_data("MIPE_SYNC: Status update sent successfully");
-        } else {
-            LOG_WRN("MIPE_SYNC: Failed to send mipe status update (err %d)", status_result);
-            ble_peripheral_send_log_data("MIPE_SYNC: Status update failed");
-        }
-        
         /* Call the Mipe sync callback if registered */
         if (mipe_sync_cb) {
             mipe_sync_cb();
