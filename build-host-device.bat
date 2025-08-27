@@ -40,6 +40,14 @@ cd /d "%~dp0Host\host_device"
 echo Working directory: %CD%
 echo.
 
+:: Check if CMakeLists.txt exists
+if not exist CMakeLists.txt (
+    echo ERROR: CMakeLists.txt not found in %CD%
+    echo Please ensure you're in the correct directory
+    pause
+    exit /b 1
+)
+
 :: Clean build directory if requested
 if %clean_build%==1 (
     echo Clean build requested...

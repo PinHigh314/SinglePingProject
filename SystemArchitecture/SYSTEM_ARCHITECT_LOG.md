@@ -363,6 +363,37 @@ The flashing issue appears to be related to:
 
 ---
 
+## 2025-08-26: Device Name Change to "MIPE" with Preserved BLE Configuration
+
+**Decision:**
+Successfully changed device name from "SinglePing Mipe" to "MIPE" while maintaining the critical BLE configuration that enables reliable RSSI streaming.
+
+**Changes Made:**
+1. **Host Device**: Updated `MIPE_DEVICE_NAME` from "SinglePing Mipe" to "MIPE" in ble_central.c
+2. **Mipe Device**: Updated scan response name from "SinglePing Mipe" to "MIPE" in ble_service.c
+3. **Host Logging**: Updated startup message from "Scanning for: SinglePing Mipe" to "Scanning for: MIPE"
+4. **Configuration**: Confirmed `CONFIG_BT_DEVICE_NAME="MIPE"` already set in Mipe prj.conf
+
+**Critical BLE Configuration Preserved:**
+- **Mipe Advertising**: Uses `BT_LE_ADV_OPT_CONN` with name in scan response only
+- **Host Scanning**: Uses `BT_LE_SCAN_TYPE_ACTIVE` to request scan responses  
+- **No Zephyr Conflicts**: Avoids `BT_LE_ADV_OPT_USE_NAME` and `BT_LE_ADV_OPT_NO_NAME`
+- **Advertising Data**: Contains only flags and UUID (no device name)
+
+**Why This Change Succeeded:**
+1. **Consistent Approach**: Maintained the scan-response-only advertising strategy
+2. **Active Scanning**: Host continues to use active scanning to receive scan responses
+3. **No Configuration Conflicts**: Avoided manual advertising data changes that conflict with Zephyr
+4. **Complete System Update**: Updated both scanning and advertising components simultaneously
+
+**Verification Status:**
+- ✅ Host device now scans for "MIPE" instead of "SinglePing Mipe"
+- ✅ Mipe device advertises as "MIPE" in scan response
+- ✅ Critical BLE configuration preserved for RSSI streaming
+- ✅ System ready for testing with new device name
+
+---
+
 Further entries will document:
 - Major architectural changes
 - Interface updates

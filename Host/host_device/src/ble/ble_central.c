@@ -11,7 +11,9 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/hci.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 
@@ -20,11 +22,15 @@
 LOG_MODULE_REGISTER(ble_central_real, LOG_LEVEL_INF);
 
 /* Target device name */
-#define MIPE_DEVICE_NAME "SinglePing Mipe"
+#define MIPE_DEVICE_NAME "MIPE"
 
 /* Callback management */
 static mipe_rssi_cb_t mipe_rssi_callback = NULL;
 static bool scanning = false;
+static struct bt_conn *mipe_connection = NULL;
+static bool connected = false;
+static bt_addr_le_t mipe_device_addr;
+static bool mipe_device_found = false;
 
 /* Context for the data parser */
 struct ad_parse_ctx {
@@ -51,6 +57,10 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
         char addr_str[BT_ADDR_LE_STR_LEN];
         bt_addr_le_to_str(ctx->addr, addr_str, sizeof(addr_str));
         LOG_INF("Found Mipe beacon: %s (RSSI %d)", addr_str, ctx->rssi);
+        
+        /* Store device address for sync mode connection */
+        memcpy(&mipe_device_addr, ctx->addr, sizeof(bt_addr_le_t));
+        mipe_device_found = true;
         
         /* Forward RSSI to callback immediately */
         if (mipe_rssi_callback) {
@@ -87,6 +97,16 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
     bt_data_parse(ad, ad_parse_cb, &ctx);
 }
 
+/* Connection callback forward declarations */
+static void connected_cb(struct bt_conn *conn, uint8_t err);
+static void disconnected_cb(struct bt_conn *conn, uint8_t reason);
+
+/* Connection callbacks */
+static struct bt_conn_cb conn_callbacks = {
+    .connected = connected_cb,
+    .disconnected = disconnected_cb,
+};
+
 int ble_central_init(mipe_rssi_cb_t rssi_cb)
 {
     if (!rssi_cb) {
@@ -95,6 +115,9 @@ int ble_central_init(mipe_rssi_cb_t rssi_cb)
     }
 
     mipe_rssi_callback = rssi_cb;
+
+    /* Register connection callbacks */
+    bt_conn_cb_register(&conn_callbacks);
 
     LOG_INF("BLE Central BEACON MODE initialized");
     return 0;
@@ -149,4 +172,111 @@ int ble_central_stop_scan(void)
 bool ble_central_is_scanning(void)
 {
     return scanning;
+}
+
+/* Connection callback functions */
+static void connected_cb(struct bt_conn *conn, uint8_t err)
+{
+    const bt_addr_le_t *addr = bt_conn_get_dst(conn);
+    char addr_str[BT_ADDR_LE_STR_LEN];
+    
+    if (addr) {
+        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+    } else {
+        strcpy(addr_str, "unknown");
+    }
+    
+    if (err) {
+        LOG_ERR("Failed to connect to %s (err %d)", addr_str, err);
+        connected = false;
+        return;
+    }
+    
+    LOG_INF("Connected to Mipe: %s", addr_str);
+    mipe_connection = conn;
+    connected = true;
+}
+
+static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
+{
+    const bt_addr_le_t *addr = bt_conn_get_dst(conn);
+    char addr_str[BT_ADDR_LE_STR_LEN];
+    
+    if (addr) {
+        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+    } else {
+        strcpy(addr_str, "unknown");
+    }
+    
+    LOG_INF("Disconnected from Mipe: %s (reason 0x%02x)", addr_str, reason);
+    
+    if (mipe_connection == conn) {
+        mipe_connection = NULL;
+    }
+    connected = false;
+}
+
+int ble_central_connect_to_mipe(const bt_addr_le_t *addr)
+{
+    int err;
+    
+    if (connected) {
+        LOG_WRN("Already connected to Mipe");
+        return 0;
+    }
+    
+    struct bt_conn *conn;
+    err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
+    if (err) {
+        LOG_ERR("Failed to create connection (err %d)", err);
+        return err;
+    }
+    
+    LOG_INF("Connection attempt initiated");
+    return 0;
+}
+
+int ble_central_disconnect(void)
+{
+    if (!connected || !mipe_connection) {
+        return 0;
+    }
+    
+    int err = bt_conn_disconnect(mipe_connection, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    if (err) {
+        LOG_ERR("Failed to disconnect (err %d)", err);
+        return err;
+    }
+    
+    LOG_INF("Disconnection initiated");
+    return 0;
+}
+
+bool ble_central_is_connected(void)
+{
+    return connected;
+}
+
+/**
+ * @brief Get the stored Mipe device address for connection
+ * @param addr Pointer to store the device address
+ * @return true if Mipe device address is available, false otherwise
+ */
+bool ble_central_get_mipe_address(bt_addr_le_t *addr)
+{
+    if (!mipe_device_found) {
+        return false;
+    }
+    
+    memcpy(addr, &mipe_device_addr, sizeof(bt_addr_le_t));
+    return true;
+}
+
+/**
+ * @brief Clear the stored Mipe device address
+ */
+void ble_central_clear_mipe_address(void)
+{
+    mipe_device_found = false;
+    memset(&mipe_device_addr, 0, sizeof(bt_addr_le_t));
 }

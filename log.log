@@ -1,0 +1,54 @@
+[2025-Aug-26 17:51:10] [debug] --------------------------------------------------------------------------------
+[2025-Aug-26 17:51:10] [debug] C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.exe --log 
+[2025-Aug-26 17:51:10] [debug] nrfjprog version 10.24.2 external
+[2025-Aug-26 17:51:10] [debug] --------------------------------------------------------------------------------
+[2025-Aug-26 17:51:10] [ info] Load library at C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.dll.
+[2025-Aug-26 17:51:10] [ info] Library loaded, loading member functions.
+[2025-Aug-26 17:51:10] [ info] Member functions succesfully loaded.
+[2025-Aug-26 17:51:11] [debug] [ Client] - open
+[2025-Aug-26 17:51:11] [debug] [ Client] - start
+[2025-Aug-26 17:51:11] [ info] [ Client] - stdout: Jlinkarm nRF Worker ready. Handling sequence d0a04b4c-a249-48f7-a0fd-2dc09fa983f2.
+[2025-Aug-26 17:51:11] [trace] [ Client] - Command open executed for 40 milliseconds with result 0
+[2025-Aug-26 17:51:11] [debug] [ Client] - config
+[2025-Aug-26 17:51:11] [trace] [ Client] - Command config executed for 15 milliseconds with result 0
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - Logger sink registered in Segger backend logger
+[2025-Aug-26 17:51:11] [debug] [  JLink] - Logger sink registered in JLink logger
+[2025-Aug-26 17:51:11] [debug] [  nRFXX] - open
+[2025-Aug-26 17:51:11] [debug] [  nRFXX] - just_check_family
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - open_dll
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - No J-Link DLL path was provided. Attempting to auto detect.
+[2025-Aug-26 17:51:11] [ info] [SeggerBackend] - Load library at C:\Program Files\SEGGER\JLink_V818\JLink_x64.dll.
+[2025-Aug-26 17:51:11] [debug] [ Client] - enum_emu_snr
+[2025-Aug-26 17:51:11] [ info] [SeggerBackend] - Library loaded, loading member functions.
+[2025-Aug-26 17:51:11] [ info] [SeggerBackend] - Member functions succesfully loaded.
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - Set batch mode
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - dll_version
+[2025-Aug-26 17:51:11] [ info] [SeggerBackend] - Segger dll version 8.18.  loaded.
+[2025-Aug-26 17:51:11] [trace] [ Worker] - Command open executed for 3 milliseconds with result 0
+[2025-Aug-26 17:51:11] [debug] [  nRFXX] - config
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - enum_emu_snr
+[2025-Aug-26 17:51:11] [trace] [ Worker] - Command config executed for 2 milliseconds with result 0
+[2025-Aug-26 17:51:11] [trace] [ Client] - Command enum_emu_con_info executed for 15 milliseconds with result 0
+[2025-Aug-26 17:51:11] [debug] [  nRFXX] - enum_emu_con_info
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - is_connected_to_emu
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - enum_emu_con_info
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - is_connected_to_emu
+[2025-Aug-26 17:51:11] [trace] [ Worker] - Command enum_emu_con_info executed for 4 milliseconds with result 0
+[2025-Aug-26 17:51:11] [debug] [  nRFXX] - close
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - is_connected_to_emu
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - close
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - disconnect_from_emu
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - is_connected_to_emu
+[2025-Aug-26 17:51:11] [debug] [SeggerBackend] - Segger Backend closed.
+[2025-Aug-26 17:51:11] [debug] [  nRFXX] - nRF family DLL closed
+[2025-Aug-26 17:51:11] [trace] [ Worker] - Command close executed for 16 milliseconds with result 0
+[2025-Aug-26 17:51:11] [trace] [ Client] - Command close executed for 31 milliseconds with result 0
+[2025-Aug-26 17:51:11] [debug] [ Client] - terminate
+[2025-Aug-26 17:51:11] [trace] [ Client] - Command terminate executed for 0 milliseconds with result 0
+[2025-Aug-26 17:51:11] [trace] [ Worker] - Command terminate executed for 0 milliseconds with result 0
+[2025-Aug-26 17:51:11] [trace] [ Worker] - Executed 5 commands for 25 milliseconds
+[2025-Aug-26 17:51:11] [debug] [ Client] - Worker process exited with code: 0
+[2025-Aug-26 17:51:11] [debug] [ Client] - Worker process exited with code: 0
+[2025-Aug-26 17:51:11] [debug] [ Client] - Child process terminated with result 0
+[2025-Aug-26 17:51:11] [trace] [ Client] - Executed 5 commands for 101 milliseconds
+[2025-Aug-26 17:51:11] [debug] [ Client] - terminate

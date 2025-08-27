@@ -27,16 +27,16 @@ LOG_MODULE_REGISTER(host_main_v9, LOG_LEVEL_INF);
 /* BLE logging buffer */
 static char ble_log_buffer[128];
 
-/* Helper function to send logs via BLE */
+/* Helper function to send logs via BLE - Quiet-test: All logging commented out */
 static void log_ble(const char *format, ...)
 {
-    va_list args;
-    va_start(args, format);
-    vsnprintf(ble_log_buffer, sizeof(ble_log_buffer), format, args);
-    va_end(args);
+    // va_list args;
+    // va_start(args, format);
+    // vsnprintf(ble_log_buffer, sizeof(ble_log_buffer), format, args);
+    // va_end(args);
 
-    LOG_INF("%s", ble_log_buffer);
-    ble_peripheral_send_log_data(ble_log_buffer);
+    // LOG_INF("%s", ble_log_buffer);
+    // ble_peripheral_send_log_data(ble_log_buffer);
 }
 
 /* LED definitions */
@@ -55,6 +55,24 @@ static bool motoapp_connected = false;
 static bool mipe_connected = false;
 static bool streaming_active = false;
 
+/* Ultra-conservative connection state machine */
+typedef enum {
+    STAGE_INITIAL_WAIT = 0,
+    STAGE_BATTERY_READY,
+    STAGE_BEACON_DETECTION,
+    STAGE_CONNECTION_PREP,
+    STAGE_CONNECTION_ATTEMPT,
+    STAGE_CONNECTION_SUCCESS,
+    STAGE_CONNECTION_FAILED,
+    STAGE_CONNECTION_RETRY,
+    STAGE_CONNECTION_TIMEOUT
+} connection_stage_t;
+
+static connection_stage_t current_stage = STAGE_INITIAL_WAIT;
+static uint32_t stage_start_time = 0;
+static uint8_t connection_retry_count = 0;
+static bt_addr_le_t current_mipe_addr;
+
 /* Timers */
 static struct k_timer heartbeat_timer;
 static struct k_timer led_flash_timer;
@@ -68,81 +86,180 @@ static uint32_t latest_mipe_timestamp = 0;
 static mipe_status_t mipe_status = {0};
 static uint16_t mipe_connection_attempts = 0;
 
+/* LED3 control functions - Quiet-test: All LED operations commented out for quiet testing */
+static void led3_set_off(void)
+{
+    // gpio_pin_set_dt(&led3, 0);
+}
+
+static void led3_set_slow_blink(void)
+{
+    // static bool led3_state = false;
+    // static uint32_t last_blink_time = 0;
+    // uint32_t current_time = k_uptime_get_32();
+    // 
+    // if ((current_time - last_blink_time) >= 1000) { /* 1Hz blink */
+    //     led3_state = !led3_state;
+    //     gpio_pin_set_dt(&led3, led3_state);
+    //     last_blink_time = current_time;
+    // }
+}
+
+static void led3_set_fast_blink(void)
+{
+    // static bool led3_state = false;
+    // static uint32_t last_blink_time = 0;
+    // uint32_t current_time = k_uptime_get_32();
+    // 
+    // if ((current_time - last_blink_time) >= 250) { /* 4Hz blink */
+    //     led3_state = !led3_state;
+    //     gpio_pin_set_dt(&led3, led3_state);
+    //     last_blink_time = current_time;
+    // }
+}
+
+static void led3_set_solid_on(void)
+{
+    // gpio_pin_set_dt(&led3, 1);
+}
+
+static void led3_set_double_blink(void)
+{
+    // static bool led3_state = false;
+    // static uint32_t last_blink_time = 0;
+    // static uint8_t blink_count = 0;
+    // uint32_t current_time = k_uptime_get_32();
+    // 
+    // if ((current_time - last_blink_time) >= 200) {
+    //     if (blink_count < 2) {
+    //         led3_state = !led3_state;
+    //         gpio_pin_set_dt(&led3, led3_state);
+    //         blink_count++;
+    //     } else {
+    //         led3_state = false;
+    //         gpio_pin_set_dt(&led3, 0);
+    //         if ((current_time - last_blink_time) >= 1000) {
+    //             blink_count = 0;
+    //             last_blink_time = current_time;
+    //         }
+    //     }
+    // }
+}
+
+static void led3_set_triple_blink(void)
+{
+    // static bool led3_state = false;
+    // static uint32_t last_blink_time = 0;
+    // static uint8_t blink_count = 0;
+    // uint32_t current_time = k_uptime_get_32();
+    // 
+    // if ((current_time - last_blink_time) >= 200) {
+    //     if (blink_count < 3) {
+    //         led3_state = !led3_state;
+    //         gpio_pin_set_dt(&led3, led3_state);
+    //         blink_count++;
+    //     } else {
+    //         led3_state = false;
+    //         gpio_pin_set_dt(&led3, 0);
+    //         if ((current_time - last_blink_time) >= 1000) {
+    //             blink_count = 0;
+    //             last_blink_time = current_time;
+    //         }
+    //     }
+    // }
+}
+
+static void led3_set_very_slow_blink(void)
+{
+    // static bool led3_state = false;
+    // static uint32_t last_blink_time = 0;
+    // uint32_t current_time = k_uptime_get_32();
+    // 
+    // if ((current_time - last_blink_time) >= 2000) { /* 0.5Hz blink */
+    //     led3_state = !led3_state;
+    //     gpio_pin_set_dt(&led3, led3_state);
+    //     last_blink_time = current_time;
+    // }
+}
+
 /* Timer handlers */
 static void heartbeat_timer_handler(struct k_timer *timer)
 {
-    static bool led_state = false;
-    gpio_pin_set_dt(&led0, led_state);
-    led_state = !led_state;
+    /* Quiet-test: LED operations commented out for quiet testing */
+    // static bool led_state = false;
+    // gpio_pin_set_dt(&led0, led_state);
+    // led_state = !led_state;
 }
 
 static void led_flash_timer_handler(struct k_timer *timer)
 {
-    /* Turn off RSSI indicator LED */
-    gpio_pin_set_dt(&led2, 0);
+    /* Quiet-test: LED operations commented out for quiet testing */
+    // gpio_pin_set_dt(&led2, 0);
 }
 
 static void led1_rapid_flash_timer_handler(struct k_timer *timer)
 {
-    static bool led1_state = false;
-    static int log_counter = 0;
-    
-    /* Log every 10th call to avoid log spam */
-    if (++log_counter >= 10) {
-        log_counter = 0;
-        log_ble("LED1 Timer: MotoApp=%s, Mipe=%s", 
-                motoapp_connected ? "YES" : "NO",
-                mipe_connected ? "YES" : "NO");
-    }
-    
-    /* Only flash if both connections are active */
-    if (motoapp_connected && mipe_connected) {
-        led1_state = !led1_state;
-        gpio_pin_set_dt(&led1, led1_state);
-    } else {
-    /* Safety: if timer is running but conditions changed, stop it */
-        log_ble("LED1 Timer: Stopping timer - conditions changed!");
-        k_timer_stop(&led1_rapid_flash_timer);
-        /* Set LED1 based on current state */
-        if (motoapp_connected && !mipe_connected) {
-            log_ble("LED1 Timer: Setting to solid ON (MotoApp only)");
-            gpio_pin_set_dt(&led1, 1);  /* Solid ON */
-        } else {
-            log_ble("LED1 Timer: Setting to OFF");
-            gpio_pin_set_dt(&led1, 0);  /* OFF */
-        }
-    }
+    /* Quiet-test: LED operations commented out for quiet testing */
+    // static bool led1_state = false;
+    // static int log_counter = 0;
+    // 
+    // /* Log every 10th call to avoid log spam */
+    // if (++log_counter >= 10) {
+    //     log_counter = 0;
+    //     log_ble("LED1 Timer: MotoApp=%s, Mipe=%s", 
+    //             motoapp_connected ? "YES" : "NO",
+    //             mipe_connected ? "YES" : "NO");
+    // }
+    // 
+    // /* Only flash if both connections are active */
+    // if (motoapp_connected && mipe_connected) {
+    //     led1_state = !led1_state;
+    //     gpio_pin_set_dt(&led1, led1_state);
+    // } else {
+    // /* Safety: if timer is running but conditions changed, stop it */
+    //     log_ble("LED1 Timer: Stopping timer - conditions changed!");
+    //     k_timer_stop(&led1_rapid_flash_timer);
+    //     /* Set LED1 based on current state */
+    //     if (motoapp_connected && !mipe_connected) {
+    //         log_ble("LED1 Timer: Setting to solid ON (MotoApp only)");
+    //         gpio_pin_set_dt(&led1, 1);  /* Solid ON */
+    //     } else {
+    //         log_ble("LED1 Timer: Setting to OFF");
+    //         gpio_pin_set_dt(&led1, 0);  /* OFF */
+    //     }
+    // }
 }
 
 /* Helper function to update LED1 state */
 static void update_led1_state(void)
 {
-    /* Always stop the timer first to prevent any race conditions */
-    k_timer_stop(&led1_rapid_flash_timer);
-    
-    /* Small delay to ensure timer is fully stopped */
-    k_sleep(K_MSEC(10));
-    
-    log_ble("=== LED1 State Update ===");
-    log_ble("  MotoApp connected: %s", motoapp_connected ? "YES" : "NO");
-    log_ble("  Mipe connected: %s", mipe_connected ? "YES" : "NO");
-    log_ble("  Timer running: %s", k_timer_remaining_get(&led1_rapid_flash_timer) > 0 ? "YES" : "NO");
-    
-    if (motoapp_connected && mipe_connected) {
-        /* Both connected - start rapid flash */
-        log_ble("LED1: Starting rapid flash (dual connection)");
-        gpio_pin_set_dt(&led1, 1); /* Ensure LED is on before starting timer */
-        k_timer_start(&led1_rapid_flash_timer, K_NO_WAIT, K_MSEC(100));
-    } else if (motoapp_connected && !mipe_connected) {
-        /* Only MotoApp connected - solid ON */
-        log_ble("LED1: Setting to Solid ON (MotoApp only, Mipe NOT connected)");
-        gpio_pin_set_dt(&led1, 1);
-    } else {
-        /* No MotoApp connection - LED1 off */
-        log_ble("LED1: Setting to OFF (no MotoApp)");
-        gpio_pin_set_dt(&led1, 0);
-    }
-    log_ble("=== LED1 State Update Complete ===");
+    /* Quiet-test: LED operations commented out for quiet testing */
+    // /* Always stop the timer first to prevent any race conditions */
+    // k_timer_stop(&led1_rapid_flash_timer);
+    // 
+    // /* Small delay to ensure timer is fully stopped */
+    // k_sleep(K_MSEC(10));
+    // 
+    // log_ble("=== LED1 State Update ===");
+    // log_ble("  MotoApp connected: %s", motoapp_connected ? "YES" : "NO");
+    // log_ble("  Mipe connected: %s", mipe_connected ? "YES" : "NO");
+    // log_ble("  Timer running: %s", k_timer_remaining_get(&led1_rapid_flash_timer) > 0 ? "YES" : "NO");
+    // 
+    // if (motoapp_connected && mipe_connected) {
+    //     /* Both connected - start rapid flash */
+    //     log_ble("LED1: Starting rapid flash (dual connection)");
+    //     gpio_pin_set_dt(&led1, 1); /* Ensure LED is on before starting timer */
+    //     k_timer_start(&led1_rapid_flash_timer, K_NO_WAIT, K_MSEC(100));
+    // } else if (motoapp_connected && !mipe_connected) {
+    //     /* Only MotoApp connected - solid ON */
+    //     log_ble("LED1: Setting to Solid ON (MotoApp only, Mipe NOT connected)");
+    //     gpio_pin_set_dt(&led1, 1);
+    // } else {
+    //     /* No MotoApp connection - LED1 off */
+    //     log_ble("LED1: Setting to OFF (no MotoApp)");
+    //     gpio_pin_set_dt(&led1, 0);
+    // }
+    // log_ble("=== LED1 State Update Complete ===");
 }
 
 static void update_mipe_status(void)
@@ -156,8 +273,147 @@ static void update_mipe_status(void)
     temp_status.last_scan_timestamp = k_uptime_get_32();
     temp_status.connection_attempts = mipe_connection_attempts;
 
-    log_ble("Updating mipe status - battery: %.2fV", temp_status.battery_voltage);
+    // Keep status updates enabled for BLE connection stability
+    // log_ble("Updating mipe status - battery: %.2fV", temp_status.battery_voltage);
     ble_peripheral_update_mipe_status(&temp_status);
+}
+
+/* Ultra-conservative connection state machine */
+static void handle_connection_state_machine(void)
+{
+    uint32_t current_time = k_uptime_get_32();
+    uint32_t stage_duration = current_time - stage_start_time;
+    
+    switch (current_stage) {
+        case STAGE_INITIAL_WAIT:
+            /* LED3: OFF - Waiting for initial battery reading completion */
+            led3_set_off();
+            
+            if (stage_duration >= 1000) { /* Wait 1 second for battery reading */
+                log_ble("Initial wait complete - moving to battery ready stage");
+                current_stage = STAGE_BATTERY_READY;
+                stage_start_time = current_time;
+            }
+            break;
+            
+        case STAGE_BATTERY_READY:
+            /* LED3: SLOW BLINK (1Hz) - Battery ready, waiting for Mipe beacon */
+            led3_set_slow_blink();
+            
+            if (stage_duration >= 5000) { /* 5-second timeout for beacon detection */
+                log_ble("Beacon detection timeout - no Mipe found");
+                current_stage = STAGE_CONNECTION_TIMEOUT;
+                stage_start_time = current_time;
+            } else if (ble_central_get_mipe_address(&current_mipe_addr)) {
+                log_ble("Mipe beacon detected - moving to connection preparation");
+                current_stage = STAGE_CONNECTION_PREP;
+                stage_start_time = current_time;
+                ble_central_stop_scan(); /* Stop scanning to prepare for connection */
+            }
+            break;
+            
+        case STAGE_CONNECTION_PREP:
+            /* LED3: FAST BLINK (4Hz) - Preparing for connection */
+            led3_set_fast_blink();
+            
+            if (stage_duration >= 2000) { /* 2-second preparation delay */
+                log_ble("Connection preparation complete - attempting connection");
+                current_stage = STAGE_CONNECTION_ATTEMPT;
+                stage_start_time = current_time;
+                connection_retry_count = 0;
+                
+                /* Attempt connection */
+                int err = ble_central_connect_to_mipe(&current_mipe_addr);
+                if (err) {
+                    log_ble("Connection attempt failed: %d", err);
+                    current_stage = STAGE_CONNECTION_FAILED;
+                    stage_start_time = current_time;
+                }
+            }
+            break;
+            
+        case STAGE_CONNECTION_ATTEMPT:
+            /* LED3: SOLID ON - Connection attempt in progress */
+            led3_set_solid_on();
+            
+            if (stage_duration >= 5000) { /* 5-second connection timeout */
+                log_ble("Connection attempt timeout");
+                current_stage = STAGE_CONNECTION_FAILED;
+                stage_start_time = current_time;
+                ble_central_disconnect(); /* Ensure clean disconnect */
+            } else if (ble_central_is_connected()) {
+                log_ble("Connection successful!");
+                current_stage = STAGE_CONNECTION_SUCCESS;
+                stage_start_time = current_time;
+                mipe_connected = true;
+                update_led1_state();
+            }
+            break;
+            
+        case STAGE_CONNECTION_SUCCESS:
+            /* LED3: DOUBLE BLINK - Connection successful */
+            led3_set_double_blink();
+            
+            if (stage_duration >= 10000) { /* 10-second connection window */
+                log_ble("Connection window completed - disconnecting");
+                ble_central_disconnect();
+                current_stage = STAGE_BATTERY_READY;
+                stage_start_time = current_time;
+                mipe_connected = false;
+                update_led1_state();
+                ble_central_start_scan(); /* Resume scanning */
+            }
+            break;
+            
+        case STAGE_CONNECTION_FAILED:
+            /* LED3: TRIPLE BLINK - Connection failed */
+            led3_set_triple_blink();
+            
+            if (stage_duration >= 2000) { /* 2-second pause after failure */
+                if (connection_retry_count < 2) { /* Max 3 attempts total */
+                    connection_retry_count++;
+                    log_ble("Retrying connection (attempt %d/3)", connection_retry_count + 1);
+                    current_stage = STAGE_CONNECTION_RETRY;
+                    stage_start_time = current_time;
+                } else {
+                    log_ble("Max connection retries reached - giving up");
+                    current_stage = STAGE_CONNECTION_TIMEOUT;
+                    stage_start_time = current_time;
+                }
+            }
+            break;
+            
+        case STAGE_CONNECTION_RETRY:
+            /* LED3: FAST BLINK - Retrying connection */
+            led3_set_fast_blink();
+            
+            if (stage_duration >= 1000) { /* 1-second delay before retry */
+                log_ble("Retrying connection attempt");
+                current_stage = STAGE_CONNECTION_ATTEMPT;
+                stage_start_time = current_time;
+                
+                /* Attempt connection again */
+                int err = ble_central_connect_to_mipe(&current_mipe_addr);
+                if (err) {
+                    log_ble("Retry connection attempt failed: %d", err);
+                    current_stage = STAGE_CONNECTION_FAILED;
+                    stage_start_time = current_time;
+                }
+            }
+            break;
+            
+        case STAGE_CONNECTION_TIMEOUT:
+            /* LED3: VERY SLOW BLINK - Connection timeout, returning to beacon mode */
+            led3_set_very_slow_blink();
+            
+            if (stage_duration >= 5000) { /* 5-second cooldown */
+                log_ble("Connection timeout cooldown complete - returning to beacon detection");
+                current_stage = STAGE_BATTERY_READY;
+                stage_start_time = current_time;
+                ble_central_start_scan(); /* Resume scanning */
+            }
+            break;
+    }
 }
 
 /* Mipe sync operation */
@@ -166,31 +422,124 @@ static void handle_mipe_sync(void)
     log_ble("=== MIPE SYNC STARTED ===");
     log_ble("Turning on LED3 for sync operation");
     
-    /* Turn on LED3 to indicate sync operation */
-    gpio_pin_set_dt(&led3, 1);
+    /* Quiet-test: LED operations commented out for quiet testing */
+    // gpio_pin_set_dt(&led3, 1);
     
-    /* TODO: Implement actual Mipe connection logic here */
-    /* For now, simulate a successful sync with mock data */
-    k_sleep(K_MSEC(2000));  /* 2000ms timeout as requested */
+    /* Stop normal scanning and clear any previous device address */
+    ble_central_stop_scan();
+    ble_central_clear_mipe_address();
     
-    /* Use constant battery value for testing Host-to-App communication */
-    mipe_status.battery_voltage = 3.30f;  /* Constant test value */
-    mipe_status.connection_duration = 2;  /* 2 second connection */
+    /* Start sync mode scanning */
+    log_ble("Starting sync mode scanning for Mipe device");
+    int err = ble_central_start_scan();
+    if (err) {
+        log_ble("Failed to start sync scan: %d", err);
+        goto sync_failed;
+    }
+    
+    /* Wait for Mipe device to be detected (max 5 seconds) */
+    uint32_t start_time = k_uptime_get_32();
+    bt_addr_le_t mipe_addr;
+    bool device_found = false;
+    
+    while ((k_uptime_get_32() - start_time) < 5000) {
+        if (ble_central_get_mipe_address(&mipe_addr)) {
+            device_found = true;
+            break;
+        }
+        k_sleep(K_MSEC(100));
+    }
+    
+    if (!device_found) {
+        log_ble("Mipe device not found within 5 seconds");
+        goto sync_failed;
+    }
+    
+    char addr_str[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(&mipe_addr, addr_str, sizeof(addr_str));
+    log_ble("Mipe device found: %s - attempting connection", addr_str);
+    
+    /* Stop scanning and attempt connection */
+    ble_central_stop_scan();
+    
+    err = ble_central_connect_to_mipe(&mipe_addr);
+    if (err) {
+        log_ble("Failed to initiate connection: %d", err);
+        goto sync_failed;
+    }
+    
+    /* Wait for connection to complete (max 3 seconds) */
+    start_time = k_uptime_get_32();
+    while ((k_uptime_get_32() - start_time) < 3000) {
+        if (ble_central_is_connected()) {
+            break;
+        }
+        k_sleep(K_MSEC(100));
+    }
+    
+    if (!ble_central_is_connected()) {
+        log_ble("Connection timeout - Mipe not connected");
+        goto sync_failed;
+    }
+    
+    log_ble("Connected to Mipe - maintaining connection for sync window");
+    
+    /* Maintain connection for sync window (10 seconds) */
+    uint32_t sync_start = k_uptime_get_32();
+    while ((k_uptime_get_32() - sync_start) < 10000) {
+        /* Continue RSSI streaming while connected */
+        k_sleep(K_MSEC(100));
+        
+        if (!ble_central_is_connected()) {
+            log_ble("Mipe disconnected during sync window");
+            break;
+        }
+    }
+    
+    /* Disconnect after sync window */
+    ble_central_disconnect();
+    log_ble("Sync window completed - disconnected from Mipe");
+    
+    /* Update status with real connection data */
+    mipe_status.battery_voltage = 3.30f;  /* TODO: Get actual battery voltage */
+    mipe_status.connection_duration = (k_uptime_get_32() - sync_start) / 1000;
     strncpy(mipe_status.connection_state, "Connected", sizeof(mipe_status.connection_state) - 1);
     mipe_status.connection_state[sizeof(mipe_status.connection_state) - 1] = '\0';
-    strncpy(mipe_status.device_address, "AA:BB:CC:DD:EE:FF", sizeof(mipe_status.device_address) - 1);
+    
+    char addr_str_final[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(&mipe_addr, addr_str_final, sizeof(addr_str_final));
+    strncpy(mipe_status.device_address, addr_str_final, sizeof(mipe_status.device_address) - 1);
     mipe_status.device_address[sizeof(mipe_status.device_address) - 1] = '\0';
     
     log_ble("MIPE SYNC COMPLETE");
-    log_ble("Battery: 3.30v (constant test), Duration: 2s");
+    log_ble("Duration: %u seconds, Address: %s", mipe_status.connection_duration, addr_str_final);
     
     /* Turn off LED3 after sync completion */
-    gpio_pin_set_dt(&led3, 0);
+    // gpio_pin_set_dt(&led3, 0);
     log_ble("LED3 turned off - sync complete");
     
-    /* Update status to reflect sync completion - send directly to ensure battery voltage is preserved */
-    mipe_status_t sync_status = mipe_status;
-    ble_peripheral_update_mipe_status(&sync_status);
+    /* Update status to reflect sync completion */
+    ble_peripheral_update_mipe_status(&mipe_status);
+    
+    /* Restart normal scanning */
+    ble_central_start_scan();
+    return;
+    
+sync_failed:
+    log_ble("MIPE SYNC FAILED");
+    // gpio_pin_set_dt(&led3, 0);
+    
+    /* Update status with failure information */
+    mipe_status.connection_duration = 0;
+    strncpy(mipe_status.connection_state, "Failed", sizeof(mipe_status.connection_state) - 1);
+    mipe_status.connection_state[sizeof(mipe_status.connection_state) - 1] = '\0';
+    strncpy(mipe_status.device_address, "N/A", sizeof(mipe_status.device_address) - 1);
+    mipe_status.device_address[sizeof(mipe_status.device_address) - 1] = '\0';
+    
+    ble_peripheral_update_mipe_status(&mipe_status);
+    
+    /* Restart normal scanning */
+    ble_central_start_scan();
 }
 
 /* BLE Peripheral callbacks */
@@ -207,8 +556,8 @@ static void app_disconnected(void)
     motoapp_connected = false;
     streaming_active = false;
     update_led1_state();
-    /* Turn off RSSI indicator LED when disconnected */
-    gpio_pin_set_dt(&led2, 0);
+    /* Quiet-test: LED operations commented out for quiet testing */
+    // gpio_pin_set_dt(&led2, 0);
 }
 
 static void streaming_state_changed(bool active)
@@ -217,8 +566,8 @@ static void streaming_state_changed(bool active)
     streaming_active = active;
     
     if (!active) {
-        /* Turn off RSSI indicator LED when streaming stops */
-        gpio_pin_set_dt(&led2, 0);
+        /* Quiet-test: LED operations commented out for quiet testing */
+        // gpio_pin_set_dt(&led2, 0);
     }
 }
 
@@ -229,13 +578,27 @@ static void mipe_rssi_received(int8_t rssi, uint32_t timestamp)
     latest_mipe_rssi = rssi;
     latest_mipe_timestamp = timestamp;
     
-    /* In beacon mode, we're always "connected" for RSSI purposes */
+    /* Track when we last received RSSI data */
+    static uint32_t last_rssi_time = 0;
+    uint32_t current_time = k_uptime_get_32();
+    
+    /* If we haven't received RSSI for more than 3 seconds, consider Mipe disconnected */
+    if (mipe_connected && (current_time - last_rssi_time) > 3000) {
+        log_ble("Mipe beacon lost - no RSSI data for 3 seconds");
+        mipe_connected = false;
+        update_led1_state();
+        update_mipe_status();
+    }
+    
+    /* Update connection state when RSSI is received */
     if (!mipe_connected) {
         mipe_connected = true;
         log_ble("Mipe beacon detected - RSSI streaming active");
         update_led1_state();
         update_mipe_status();
     }
+    
+    last_rssi_time = current_time;
 }
 
 /* Data transmission callback */
@@ -251,9 +614,9 @@ static int get_rssi_data(int8_t *rssi, uint32_t *timestamp)
         int8_t rssi_to_send = latest_mipe_rssi;
         log_ble("TX RSSI: %d dBm (from Mipe)", rssi_to_send);
         
-        /* Flash LED2 to indicate RSSI transmission */
-        gpio_pin_set_dt(&led2, 1);
-        k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
+        /* Quiet-test: LED operations commented out for quiet testing */
+        // gpio_pin_set_dt(&led2, 1);
+        // k_timer_start(&led_flash_timer, K_MSEC(200), K_NO_WAIT);
         
         *rssi = rssi_to_send;
         *timestamp = k_uptime_get_32();
@@ -379,16 +742,42 @@ int main(void)
 
     log_ble("=== Host Device v9 Ready ===");
     log_ble("Advertising as: MIPE_HOST_A1B2");
-    log_ble("Scanning for: SinglePing Mipe");
+    log_ble("Scanning for: MIPE");
     log_ble("LED Status:");
     log_ble("  LED0: Heartbeat (blinking)");
     log_ble("  LED1: OFF=No connection, Solid=MotoApp only, Flash=Both connected");
     log_ble("  LED2: Flash when transmitting RSSI data");
+    log_ble("  LED3: Stage indicator (see state machine below)");
+    log_ble("Ultra-Conservative State Machine Activated!");
+    log_ble("LED3 Stage Mapping:");
+    log_ble("  OFF: Initial wait (battery reading)");
+    log_ble("  SLOW BLINK (1Hz): Battery ready, waiting for Mipe");
+    log_ble("  FAST BLINK (4Hz): Preparing connection");
+    log_ble("  SOLID ON: Connection attempt in progress");
+    log_ble("  DOUBLE BLINK: Connection successful");
+    log_ble("  TRIPLE BLINK: Connection failed, retrying");
+    log_ble("  VERY SLOW BLINK (0.5Hz): Timeout, returning to beacon");
+
+    /* Initialize state machine */
+    stage_start_time = k_uptime_get_32();
+    current_stage = STAGE_INITIAL_WAIT;
 
     /* Main loop */
     while (1) {
-        k_sleep(K_SECONDS(1));
+        k_sleep(K_MSEC(100));  /* Conservative sleep for stable operation */
+        
+        /* Handle the ultra-conservative connection state machine */
+        handle_connection_state_machine();
+        
+        /* Update Mipe status for BLE transmission */
         update_mipe_status();
+        
+        /* Check if Mipe connection was lost during connected state */
+        if (mipe_connected && !ble_central_is_connected()) {
+            log_ble("Mipe connection lost unexpectedly");
+            mipe_connected = false;
+            update_led1_state();
+        }
     }
 
     return 0;

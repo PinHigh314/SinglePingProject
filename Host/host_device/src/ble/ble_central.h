@@ -41,4 +41,35 @@ int ble_central_stop_scan(void);
  */
 bool ble_central_is_scanning(void);
 
+/**
+ * @brief Connect to a detected Mipe device
+ * @param addr Address of the Mipe device to connect to
+ * @return 0 on success, negative error code on failure
+ */
+int ble_central_connect_to_mipe(const bt_addr_le_t *addr);
+
+/**
+ * @brief Disconnect from Mipe device
+ * @return 0 on success, negative error code on failure
+ */
+int ble_central_disconnect(void);
+
+/**
+ * @brief Check if connected to Mipe device
+ * @return true if connected, false otherwise
+ */
+bool ble_central_is_connected(void);
+
+/**
+ * @brief Get the stored Mipe device address for connection
+ * @param addr Pointer to store the device address
+ * @return true if Mipe device address is available, false otherwise
+ */
+bool ble_central_get_mipe_address(bt_addr_le_t *addr);
+
+/**
+ * @brief Clear the stored Mipe device address
+ */
+void ble_central_clear_mipe_address(void);
+
 #endif /* BLE_CENTRAL_H_ */
