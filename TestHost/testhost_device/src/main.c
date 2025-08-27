@@ -89,15 +89,19 @@ static void button_pressed_handler(const struct device *dev, struct gpio_callbac
     /* SW3: Initiate Mipe search and flash LED3 if Mipe is in pairing mode */
     if (pins & BIT(button3.pin)) {
         LOG_INF("SW3 pressed - Initiating Mipe search");
+        LOG_INF("DEBUG: Button3 interrupt triggered successfully");
         
         /* Simulate Mipe search - in real implementation, this would be BLE scanning */
         bool mipe_in_pairing_mode = true; /* Placeholder - replace with actual detection */
         
         if (mipe_in_pairing_mode) {
             LOG_INF("Mipe detected in pairing mode - LED3 flash");
+            LOG_INF("DEBUG: Turning LED3 ON");
             led_on(&led3);
             k_msleep(200);
+            LOG_INF("DEBUG: Turning LED3 OFF");
             led_off(&led3);
+            LOG_INF("DEBUG: LED3 flash completed");
         } else {
             LOG_INF("Mipe not found or not in pairing mode");
         }

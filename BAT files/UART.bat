@@ -17,7 +17,7 @@ if defined COMPORT (
     echo Starting serial monitor at 115200 baud...
     echo Press Ctrl+C to stop
     echo.
-    powershell -ExecutionPolicy Bypass -File ..\read_serial.ps1 %COMPORT% 115200
+    powershell -ExecutionPolicy Bypass -File "C:\Development\SinglePingProject\read_serial.ps1" %COMPORT% 115200
 ) else (
     echo ERROR: No nRF54L15DK found!
     echo.
