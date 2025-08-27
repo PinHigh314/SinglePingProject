@@ -1,6 +1,11 @@
-$port = New-Object System.IO.Ports.SerialPort('COM3', 115200, 'None', 8, 'One')
+param(
+    [string]$comPort = "COM3",
+    [int]$baudRate = 115200
+)
+
+$port = New-Object System.IO.Ports.SerialPort($comPort, $baudRate, 'None', 8, 'One')
 $port.Open()
-Write-Host "Connected to COM3 at 115200 baud"
+Write-Host "Connected to $comPort at $baudRate baud"
 Write-Host "Waiting for serial data..."
 
 try {
