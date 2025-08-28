@@ -1,5 +1,8 @@
 {
     "nrf-connect.applications": [
         "${workspaceFolder}\\TestHost\\testhost_device"
-    ]
+    ],
+    "files.associations": {
+        "kernel.h": "c"
+    }
 }

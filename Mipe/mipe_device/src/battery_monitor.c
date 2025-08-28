@@ -124,7 +124,6 @@ void battery_monitor_update(void)
     if (voltage_mv <= BATTERY_VOLTAGE_CRITICAL_MV) {
         if (!critical_battery_warning_sent) {
             LOG_ERR("CRITICAL BATTERY: %u mV (%u%%)", voltage_mv, new_level);
-            led_set_pattern(LED_ID_ERROR, LED_PATTERN_ERROR);
             critical_battery_warning_sent = true;
             
             /* Force deep sleep to preserve remaining battery */
@@ -136,14 +135,12 @@ void battery_monitor_update(void)
     } else if (voltage_mv <= BATTERY_VOLTAGE_LOW_MV) {
         if (!low_battery_warning_sent) {
             LOG_WRN("Low battery warning: %u mV (%u%%)", voltage_mv, new_level);
-            led_set_pattern(LED_ID_ERROR, LED_PATTERN_SLOW_BLINK);
             low_battery_warning_sent = true;
         }
     } else {
         /* Battery recovered above warning thresholds */
         if (low_battery_warning_sent || critical_battery_warning_sent) {
             LOG_INF("Battery level recovered: %u mV (%u%%)", voltage_mv, new_level);
-            led_set_pattern(LED_ID_ERROR, LED_PATTERN_OFF);
             low_battery_warning_sent = false;
             critical_battery_warning_sent = false;
         }

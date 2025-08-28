@@ -14,7 +14,6 @@
 
 #include "ble_service.h"
 #include "led_control.h"
-#include "battery_monitor.h"
 
 LOG_MODULE_REGISTER(ble_service, LOG_LEVEL_INF);
 
@@ -105,8 +104,8 @@ void ble_service_init(void)
     }
 
     LOG_INF("Advertising started - Device name: MIPE");
-    /* Fix: Use LED1 for advertising, not LED3 */
-    led_set_pattern(LED_ID_PAIRING, LED_PATTERN_ADVERTISING);
+    /* LED1 for advertising */
+    led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_ADVERTISING);
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -125,8 +124,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
     current_conn = bt_conn_ref(conn);
     
     /* Update LEDs for connected state - Use LED1 for connection */
-    led_set_pattern(LED_ID_PAIRING, LED_PATTERN_CONNECTED);    /* LED1 solid when connected */
-    led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_OFF);       /* LED2 off */
+    led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_CONNECTED);    /* LED1 solid when connected */
+    led_set_pattern(LED_ID_PAIRING, LED_PATTERN_OFF);             /* LED2 off */
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -143,10 +142,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
     battery_notify_enabled = false;
 
-    /* Update LEDs for disconnected state */
-    led_set_pattern(LED_ID_PAIRING, LED_PATTERN_OFF);     /* LED1 off */
-    led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_OFF);  /* LED2 off */
-    led_set_pattern(LED_ID_DATA, LED_PATTERN_OFF);        /* LED3 off */
+    /* Update LEDs for disconnected state - Only LED1 for connection status */
+    led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_OFF);  /* LED1 off */
+    led_set_pattern(LED_ID_PAIRING, LED_PATTERN_OFF);     /* LED2 off */
 
     /* Stop advertising first */
     bt_le_adv_stop();
@@ -163,14 +161,15 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         led_set_pattern(LED_ID_ERROR, LED_PATTERN_ERROR);
     } else {
         LOG_INF("Advertising restarted");
-        led_set_pattern(LED_ID_PAIRING, LED_PATTERN_ADVERTISING);
+        led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_ADVERTISING);
     }
 }
 
 static ssize_t read_battery(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                             void *buf, uint16_t len, uint16_t offset)
 {
-    battery_level = battery_monitor_get_level();
+    /* Static battery level - battery monitoring removed for minimal version */
+    battery_level = 100;
     
     LOG_DBG("Battery read: %u%%", battery_level);
     
@@ -190,7 +189,6 @@ void ble_service_start_listening_mode(void)
 {
     /* For now, just use normal advertising - can optimize later */
     LOG_INF("Entering listening mode");
-    led_set_pattern(LED_ID_PAIRING, LED_PATTERN_SLOW_BLINK);
 }
 
 /* Send battery notification */
@@ -200,7 +198,8 @@ int ble_service_notify_battery(void)
         return -ENOTCONN;
     }
     
-    battery_level = battery_monitor_get_level();
+    /* Static battery level - battery monitoring removed for minimal version */
+    battery_level = 100;
     
     int err = bt_gatt_notify(current_conn, &mipe_service.attrs[2], 
                             &battery_level, sizeof(battery_level));

@@ -68,7 +68,6 @@ static void connected(struct bt_conn *conn, uint8_t err)
     
     if (err) {
         LOG_ERR("Connection failed to %s (err 0x%02x)", addr, err);
-        led_set_pattern(LED_ID_PAIRING, LED_PATTERN_ERROR);
         update_connection_state(CONN_STATE_ADVERTISING);
         return;
     }
@@ -90,9 +89,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
         LOG_INF("Connection parameters update requested");
     }
     
-    /* Update state and LED indication */
+    /* Update state */
     update_connection_state(CONN_STATE_CONNECTED);
-    led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_ON);
 }
 
 /**
@@ -119,10 +117,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     if (conn_ctx.auto_reconnect) {
         LOG_INF("Entering listening mode for reconnection");
         update_connection_state(CONN_STATE_LISTENING);
-        led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_SLOW_BLINK);
     } else {
         update_connection_state(CONN_STATE_IDLE);
-        led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_OFF);
     }
 }
 
@@ -262,7 +258,6 @@ void connection_manager_update(void)
         if (now - conn_ctx.disconnect_time > (5 * 60 * 1000)) {
             LOG_INF("Listening mode timeout - entering idle state");
             update_connection_state(CONN_STATE_IDLE);
-            led_set_pattern(LED_ID_CONNECTION, LED_PATTERN_OFF);
         }
         break;
         

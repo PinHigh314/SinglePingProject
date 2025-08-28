@@ -53,10 +53,7 @@
  */
 
 #include "led_control.h"
-#include "button_control.h"
 #include "ble_service.h"
-#include "connection_manager.h"
-#include "battery_monitor.h"
 #include <zephyr/kernel.h>
 
 /**
@@ -69,44 +66,20 @@ int main(void) {
      */
     led_control_init();
     
-    /* Initialize button control for manual wake from deep sleep
-     * Button press can force device into pairing mode
-     */
-    button_control_init();
-    
     /* Initialize BLE service as power-optimized peripheral
      * Configures advertising intervals and connection parameters
      * for minimal power consumption
      */
     ble_service_init();
-    
-    /* Initialize connection manager for Host communication
-     * Handles connection states, listening mode, and recovery protocol
-     */
-    connection_manager_init();
-    
-    /* Initialize battery monitoring for power status reporting
-     * Critical for achieving 30+ day battery life target
-     * Reports battery level to Host during connections
-     */
-    battery_monitor_init();
 
-    /* Start heartbeat LED pattern to indicate system ready
-     * This will be replaced with power-optimized status indication
-     * in TMT6 (heartbeat consumes unnecessary power)
-     */
-    led_set_pattern(LED_ID_HEARTBEAT, LED_PATTERN_HEARTBEAT);
+    /* LED0: Remove heartbeat pattern to conserve power */
+    led_set_pattern(LED_ID_HEARTBEAT, LED_PATTERN_OFF);
 
     /* Main control loop
      * Processes system events with minimal CPU usage
      * Most time spent in sleep mode for power conservation
      */
     while (1) {
-        /* Process button events for manual control
-         * Allows user to force pairing mode or wake from deep sleep
-         */
-        button_control_update();
-        
         /* Update LED patterns based on system state
          * TMT6 will optimize this for minimal power usage
          */
@@ -117,18 +90,6 @@ int main(void) {
          * Implements power-optimized communication protocol
          */
         ble_service_update();
-        
-        /* Manage connection states and recovery protocol
-         * Implements listening mode with single ping response
-         * Handles timeout transitions to deep sleep
-         */
-        connection_manager_update();
-        
-        /* Monitor battery status and report to Host
-         * Triggers low battery warnings at 10%
-         * Forces deep sleep when battery critical
-         */
-        battery_monitor_update();
 
         /* Sleep between updates to conserve power
          * 10ms sleep allows responsive operation while minimizing power

@@ -4,50 +4,70 @@ This log documents all major architectural decisions, module boundaries, interfa
 
 ---
 
+## Table of Contents
+
+- [Template for New Architectural Decisions](#template-for-new-architectural-decisions)
+- [Log Maintenance Process](#2025-08-21-log-maintenance-process)
+- [Project Kickoff & Workflow Agreement](#2025-08-02-project-kickoff--workflow-agreement)
+- [MIPE Device Prompt Review & Code Structure Assessment](#2025-08-02-mipe-device-prompt-review--code-structure-assessment)
+- [Build System Configuration & Initial Build Attempt](#2025-08-02-build-system-configuration--initial-build-attempt)
+- [Button Interaction Model Update](#2025-08-02-button-interaction-model-update)
+- [BLE Advertising and Connection Indication](#2025-08-02-ble-advertising-and-connection-indication)
+- [Successful Build Achievement & Missing Function Resolution](#2025-08-02-successful-build-achievement--missing-function-resolution)
+- [Hardware Testing & Rollback Decision](#2025-08-02-hardware-testing--rollback-decision)
+- [Re-implementing BLE Advertising and Connection Indication](#2025-08-03-re-implementing-ble-advertising-and-connection-indication)
+- [Adjusting LED Blink Rate for Pairing/Advertising State](#2025-08-03-adjusting-led-blink-rate-for-pairingadvertising-state)
+- [Multi-LED Architecture Implementation & Working Milestone](#2025-08-02-multi-led-architecture-implementation--working-milestone)
+- [Device Name Change to "MIPE" with Preserved BLE Configuration](#2025-08-26-device-name-change-to-mipe-with-preserved-ble-configuration)
+- [Zephyr Interrupt Handler Limitations and Work Queue Pattern](#2025-08-27-zephyr-interrupt-handler-limitations-and-work-queue-pattern)
+- [UART Serial Debugging and Monitoring Infrastructure](#2025-08-27-uart-serial-debugging-and-monitoring-infrastructure)
+- [GPIO and Zephyr API Usage – nRF54L15DK](#2025-08-27-gpio-and-zephyr-api-usage--nrf54l15dk)
+- [Future Entries](#future-entries)
+
+---
+
 ## Template for New Architectural Decisions
 
 *(Copy and use this template for all new entries)*
 
----
+### YYYY-MM-DD: [Title of Decision]
 
-## YYYY-MM-DD: [Title of Decision]
+**Decision:**  
+A concise statement of the architectural change that was made.
 
-**Decision:** A concise statement of the architectural change that was made.
+**Rationale:**  
+The reasons and trade-offs that led to this decision. What problem was being solved? What alternatives were considered?
 
-**Rationale:** The reasons and trade-offs that led to this decision. What problem was being solved? What alternatives were considered?
-
-**Impact:** How this decision affects the codebase, other modules, or future development.
+**Impact:**  
+How this decision affects the codebase, other modules, or future development.
 
 ---
 
 ## 2025-08-21: Log Maintenance Process
 
-**Decision:** To ensure this log is kept up-to-date, the System Architect (AI) will update it at specific, defined trigger points.
+**Decision:**  
+To ensure this log is kept up-to-date, the System Architect (AI) will update it at specific, defined trigger points.
 
-**Rationale:** An implicit process is unreliable. An explicit process ensures that all major decisions are captured consistently, making the log a trustworthy source of truth.
+**Rationale:**  
+An explicit process ensures all major decisions are captured consistently, making the log a trustworthy source of truth.
 
 **Process Triggers:**
-1.  **Explicit Confirmation:** After a discussion results in a clear architectural decision, the AI will state its intention to update the log.
-2.  **End-of-Milestone Review:** At the conclusion of each Test Milestone Test (TMT), the AI will review the log for any new lessons learned or decisions made during that phase.
-3.  **User Request:** The user can request an update to the log at any time.
+1. **Explicit Confirmation:** After a discussion results in a clear architectural decision, the AI will state its intention to update the log.
+2. **End-of-Milestone Review:** At the conclusion of each Test Milestone Test (TMT), the AI will review the log for any new lessons learned or decisions made during that phase.
+3. **User Request:** The user can request an update to the log at any time.
 
-**Impact:** This formalizes the documentation process, making it a reliable and integral part of the development workflow.
+**Impact:**  
+This formalizes the documentation process, making it a reliable and integral part of the development workflow.
 
 ---
 
 ## 2025-08-02: Project Kickoff & Workflow Agreement
 
 **Roles & Responsibilities:**
-- **System Architect (AI):**
-  - Define system structure and main modules.
-  - Design and maintain interfaces (header files).
-  - Make and document architectural decisions and trade-offs.
-  - Guide data flow and inter-module communication.
-  - Review code for architectural alignment, stability, and maintainability.
-  - Manage build/flash process and incorporate hardware feedback.
-- **Developer (User):**
-  - Implement module logic and code according to defined interfaces.
-  - Provide feedback from hardware testing.
+- **System Architect (AI):**  
+  Defines system structure, interfaces, documents decisions, guides data flow, reviews code, manages build/flash, and incorporates hardware feedback.
+- **Developer (User):**  
+  Implements module logic and code according to defined interfaces, provides feedback from hardware testing.
 
 **Workflow:**
 - Architect defines structure, interfaces, and direction.
@@ -64,335 +84,209 @@ This log documents all major architectural decisions, module boundaries, interfa
 
 ## 2025-08-02: MIPE Device Prompt Review & Code Structure Assessment
 
-### Prompt Requirements Summary
-- Research-first, stepwise, and evidence-based development.
-- Modular structure: main, led_control, button_control, ble_service, connection_manager, battery_monitor, utils.
-- Each module with .c (implementation) and .h (interface) files.
-- Dedicated directories: src/ (code), include/ (headers), boards/ (overlays), docs/ (documentation).
-- Documentation and backup discipline.
-- Strict adherence to Nordic best practices and verified APIs.
+**Prompt Requirements Summary:**  
+Research-first, stepwise, and evidence-based development. Modular structure with dedicated directories and strict documentation/backup discipline.
 
-### Current Code Structure (mipe_device/)
-- **src/**: Contains main.c, led_control.c, button_control.c, ble_service.c, connection_manager.c, battery_monitor.c, and subdirectories for ble/, measurement/, utils/.
-- **include/**: Contains led_control.h, button_control.h, ble_service.h, connection_manager.h, battery_monitor.h.
-- **boards/**: Present (contents not fully listed).
+**Current Code Structure (mipe_device/):**
+- **src/**: Contains all major modules and subdirectories for further modularization.
+- **include/**: Contains header files for all modules.
+- **boards/**, **docs/**: Present for overlays and documentation.
 - **prj.conf, CMakeLists.txt**: Present.
-- **docs/**: Present at project root (contents not fully listed).
 
-#### Observations
+**Observations & Recommendations:**
 - All major modules specified in the prompt are present as .c/.h pairs.
 - Directory structure matches the prompt's recommended organization.
-- Subdirectories (e.g., ble/, measurement/, utils/) suggest further modularization, which is positive for maintainability.
-- Project is ready for stepwise, modular development as per the prompt.
-- Documentation and backup processes need to be verified in practice (docs/ and backup discipline).
-
-#### Recommendations
-- Maintain strict separation between interface (.h) and implementation (.c) for all modules.
-- Ensure all module interfaces are fully documented and only expose necessary functions/types.
-- Use docs/ for research summaries, development logs, and test results as specified.
+- Maintain strict separation between interface (.h) and implementation (.c).
+- Use docs/ for research summaries, development logs, and test results.
 - Implement and document the backup process at each major milestone.
-- Before coding, complete and document the research phase as required by the prompt.
-
-#### Next Steps
-- Complete research and document findings in docs/research_summary.md.
-- Validate and, if needed, refine module interfaces in include/.
-- Begin stepwise development with time-stamped backups and user validation at each step.
 
 ---
 
 ## 2025-08-02: Build System Configuration & Initial Build Attempt
 
-### Build System Issues Resolved
-- **CMakeLists.txt**: Added `target_include_directories(app PRIVATE include)` to properly include header files.
-- **Missing Headers**: Copied `battery_monitor.h` from `src/utils/` to `include/` directory.
-- **Configuration**: Removed problematic `CONFIG_BT_CONN=y` from `prj.conf` as it's auto-enabled.
-- **Include Issues**: Removed non-existent `utils.h` include from `main.c`.
+**Build System Issues Resolved:**
+- Properly included header files, fixed missing headers, and resolved configuration issues.
+- Build system now correctly finds and includes project header files.
+- Remaining issues: Picolibc locks compatibility, missing function declarations.
 
-### Current Build Status
-- **Headers Found**: Build system now correctly finds and includes project header files.
-- **Main Application**: `main.c` compiles successfully with minor warning about `battery_monitor_update()` function.
-- **Remaining Issues**: 
-  - Picolibc locks compatibility issue (Zephyr/toolchain version mismatch)
-  - Missing function declarations in header files (e.g., `battery_monitor_update()`)
-
-### Architectural Observations
-- Module structure is sound with proper separation of interface (.h) and implementation (.c).
-- Build system configuration needed refinement to properly expose include directories.
-- Some function declarations are missing from header files, indicating incomplete interface definitions.
-
-### Recommendations
+**Recommendations:**
 - Review and complete all header file function declarations.
-- Address picolibc compatibility issue (may require Zephyr/toolchain version alignment).
-- **Remaining Issues**: 
-  - Picolibc locks compatibility issue (Zephyr/toolchain version mismatch)
-  - Missing function declarations in header files (e.g., `battery_monitor_update()`)
-
-### Architectural Observations
-- Module structure is sound with proper separation of interface (.h) and implementation (.c).
-- Build system configuration needed refinement to properly expose include directories.
-- Some function declarations are missing from header files, indicating incomplete interface definitions.
-
-### Recommendations
-- Review and complete all header file function declarations.
-- Address picolibc compatibility issue (may require Zephyr/toolchain version alignment).
-- Implement missing functions or remove calls to undefined functions.
-- Consider creating minimal stub implementations for missing functions to achieve successful build.
+- Address toolchain compatibility issues.
+- Implement missing functions or create stubs for successful build.
 
 ---
 
 ## 2025-08-02: Button Interaction Model Update
 
-**Decision:**
-- Transition from a simple, polling-based button check (`button_is_pressed()`) to a more robust, event-driven model.
-- The `button_control` module will now be responsible for debouncing the raw button input and detecting a "press" event (a rising edge).
+**Decision:**  
+Transitioned from polling-based button checks to an event-driven, debounced model.
 
-**Rationale:**
-- **Reliability:** The previous polling model is susceptible to mechanical button bounce, which can register multiple presses for a single physical action. A debouncing state machine solves this.
-- **Extensibility:** An event-based system (`button_was_pressed()`) is more versatile. It allows for implementing features like toggling, double-clicks, or long-presses without cluttering `main.c` with state-tracking logic.
-- **Encapsulation:** The responsibility of debouncing is now properly encapsulated within the `button_control` module, leading to cleaner code in `main.c`.
+**Rationale:**  
+Improved reliability and extensibility, encapsulated debouncing logic within the button_control module.
 
-**Interface Change:**
-- **Removed:** `bool button_is_pressed(void)`
-- **Added:**
-  - `void button_control_update(void)`: Must be called periodically in the main loop to run the debouncing state machine.
-  - `bool button_was_pressed(void)`: Returns `true` for one update cycle after a debounced press is detected.
-
-**Impact:**
-- `main.c` is simplified. It no longer needs to track the previous button state. It just calls `button_control_update()` and checks for the press event.
-- The system is now ready for more complex user interactions.
+**Impact:**  
+Simplified main.c, enabled more complex user interactions.
 
 ---
 
 ## 2025-08-02: BLE Advertising and Connection Indication
 
-**Decision:**
-- Implement basic BLE advertising to make the MIPE device discoverable.
-- Implement connection status callbacks to monitor connection state.
-- Rework the `led_control` module to support patterns (e.g., blinking) and link it to the BLE state for visual feedback.
+**Decision:**  
+Implemented basic BLE advertising and connection status callbacks, reworked led_control for pattern-based feedback.
 
-**Rationale:**
-- **Core Functionality:** Advertising is the first and most critical step for any BLE peripheral.
-- **User Feedback:** Providing immediate visual feedback on the device's state (advertising vs. connected) is crucial for usability and debugging. The LED is the primary tool for this.
-- **Modular Interaction:** This change establishes the first link between modules: `ble_service` and `connection_manager` now drive the behavior of `led_control`. This demonstrates the intended modular architecture in action.
+**Rationale:**  
+Core BLE functionality and user feedback via LEDs.
 
-**Implementation Details:**
-- `ble_service`: Initializes the Zephyr Bluetooth stack and starts advertising a connectable device name.
-- `connection_manager`: Uses the `BT_CONN_CB_DEFINE` macro to register static callbacks for `connected` and `disconnected` events.
-- `led_control`: Reworked to include a pattern-based state machine (`led_control_update`). It now exposes `led_set_pattern()` which is called by other modules.
-- `main.c`: Simplified to remove direct button-to-LED logic. It now just calls the update functions for each module.
-
----
+**Impact:**  
+Established modular interaction between BLE and LED modules.
 
 ---
 
 ## 2025-08-02: Successful Build Achievement & Missing Function Resolution
 
-**Problem Identified:**
-- Build failing due to missing `battery_monitor_init()` and `battery_monitor_update()` functions
-- Functions were called in `main.c` but not implemented in `battery_monitor.c`
-- `battery_monitor.c` source file was not included in CMakeLists.txt
+**Problem Identified & Solutions:**  
+Resolved missing function implementations and build system issues. Achieved successful build and ready for hardware testing.
 
-**Solutions Implemented:**
-1. **Interface Completion**: Added missing `battery_monitor_update()` declaration to `battery_monitor.h`
-2. **Implementation**: Created complete `battery_monitor.c` with all required functions as stubs
-3. **Build System Fix**: Added `src/utils/battery_monitor.c` to CMakeLists.txt target_sources
-4. **C Library Fix**: Corrected picolibc configuration from `CONFIG_PICOLIBC_USE_MODULE=n` to `CONFIG_PICOLIBC=n` and `CONFIG_NEWLIB_LIBC=y`
+**Flashing Attempts & Issues:**  
+Documented hardware connection status and root cause analysis for flashing failures.
 
-**Build Success Metrics:**
-- **Status**: ✅ SUCCESSFUL BUILD
-- **Files Compiled**: 91/91 (100%)
-- **Memory Usage**: 
-  - FLASH: 139,952 bytes (9.57% of 1428 KB available)
-  - RAM: 27,268 bytes (14.16% of 188 KB available)
-- **Output**: Generated `zephyr.elf` and `merged.hex` ready for flashing
-
-**Current Status:**
-- All application modules compile and link successfully
-- Architecture is sound with proper modular separation
-- Ready for hardware testing (pending board connection/flashing tool issues)
-
-**Flashing Attempts & Issues:**
-- **nrfutil**: Fails due to protobuf compatibility issue (Python library version conflict)
-- **JLink via west**: Fails with generic error, likely due to device-specific configuration
-- **Direct JLink**: Successfully connects, erases device, but fails on memory write ("Writing target memory failed")
-
-**Hardware Connection Status:**
-- ✅ Board detected via USB: `/dev/tty.usbmodem0010577046121` and `/dev/tty.usbmodem0010577046123`
-- ✅ JLink connection successful: Cortex-M33 r1p0 detected
-- ✅ Debug interface working: SWD connection established
-- ✅ Power confirmed: VTref=3.300V
-- ✅ Security: Secure debug enabled
-- ✅ Erase operation: Successful
-
-**Root Cause Analysis:**
-The flashing issue appears to be related to:
-1. **Device-specific flash programming**: nRF54L15 may require specific flash programming sequences
-2. **Memory protection**: Device may have additional security/protection mechanisms
-3. **Toolchain compatibility**: JLink device database may need nRF54L15-specific configuration
-
-**Next Steps:**
-- ✅ **nRF Connect Programmer**: Launched nRF Connect for Desktop as alternative flashing method
-- **Continue Development**: Architecture is complete, ready for implementation
-- **Priority Implementation Areas**:
-  1. **Battery Monitor**: Implement actual ADC reading for battery voltage
-  2. **LED Control**: Enhance pattern system for better visual feedback
-  3. **Button Control**: Add debouncing and multi-press detection
-  4. **BLE Service**: Implement custom GATT services for ping functionality
-  5. **Connection Manager**: Add robust connection handling and reconnection logic
-
-**Development Workflow Established:**
-- Build system working perfectly (91/91 files compile successfully)
-- Modular architecture allows independent module development
-- Incremental testing possible once flashing is resolved
-- All interfaces defined and ready for implementation
+**Next Steps:**  
+Continue development, implement priority modules, and maintain modular workflow.
 
 ---
 
 ## 2025-08-02: Hardware Testing & Rollback Decision
 
-### Hardware Testing Results
-- **Flash Success**: User successfully flashed firmware using nRF Connect Programmer
-- **Runtime Issue**: Firmware not working - no LED activity, no BLE advertising
-- **Root Cause**: Complex BLE implementation may have caused system instability
+**Testing Results & Rollback:**  
+Hardware testing revealed instability with complex BLE features. Rolled back to a stable base and simplified functionality for verification.
 
-### Architectural Decision: Rollback to Stable Base
-**Rationale:**
-- Hardware testing revealed that complex BLE implementation caused system failure
-- Better to have a working foundation than non-functional advanced features
-- Incremental development approach: start simple, add complexity gradually
-
-**Rollback Actions Taken:**
-1. **BLE Service**: Reverted to simple stub implementation
-2. **Configuration**: Removed complex logging and BLE configuration options
-3. **Main Loop**: Added simple LED test pattern to verify basic functionality
-4. **Build Target**: Pristine rebuild to ensure clean state
-
-**Current Status:**
-- **Architecture**: Maintained - all interfaces and modules preserved
-- **Functionality**: Simplified to basic LED control for hardware verification
-- **Next Steps**: Verify LED blinking, then incrementally add features
-
-**Lessons Learned:**
-- Hardware testing is critical for embedded systems
-- Complex features should be added incrementally after basic functionality is verified
-- System stability takes precedence over feature completeness
+**Lessons Learned:**  
+Incremental development and hardware testing are critical.
 
 ---
 
 ## 2025-08-03: Re-implementing BLE Advertising and Connection Indication
 
-**Decision:**
-- Re-implement basic BLE advertising and connection status indication, building upon the stable, simplified base.
-- Refactor the `ble_service` and `connection_manager` modules to use the Zephyr Logging API instead of `printk`.
-- The `led_control` module will be enhanced again to support patterns for visual feedback (blinking for advertising, solid for connected).
+**Decision:**  
+Re-implemented BLE advertising and connection indication, migrated to Zephyr Logging API, and enhanced LED feedback.
 
-**Rationale:**
-- **Core Functionality:** With a stable base confirmed, implementing discoverability and connection feedback is the next logical step.
-- **Best Practices:** Migrating from `printk` to the Zephyr Logging API is crucial for creating maintainable and debuggable firmware.
-- **User Feedback:** Linking the BLE state to the LED provides essential, immediate feedback on the device's status, which is vital for both development and end-user experience.
-
-**Implementation Details:**
-- `ble_service`: Now uses `LOG_MODULE_REGISTER` and gets the device name from `prj.conf` (`CONFIG_BT_DEVICE_NAME`). It calls `led_set_pattern()` to signal its state.
-- `connection_manager`: Implements `connected` and `disconnected` callbacks using `BT_CONN_CB_DEFINE`. These callbacks call `led_set_pattern()` to update the LED based on the connection status.
-- `led_control`: The pattern-based state machine (`led_control_update`) is reintroduced to handle different LED states (off, on, blinking).
-- `main.c`: The main loop is cleaned up to remove temporary button-to-LED logic, now simply calling the `update()` function for each module.
-
-**Status:**
-- The system now has a clean, modular implementation for advertising and connection status, with proper logging and clear visual indication.
+**Status:**  
+System now has clean, modular implementation for advertising and connection status.
 
 ---
 
 ## 2025-08-03: Adjusting LED Blink Rate for Pairing/Advertising State
 
-**Decision:**
-- Modify the LED blink interval for the `LED_PATTERN_ADVERTISING` state from 1000ms to 200ms.
+**Decision:**  
+Changed LED blink interval for advertising state from 1000ms to 200ms for improved user feedback.
 
-**Rationale:**
-- User feedback indicated that the previous 1-second blink interval was too slow to clearly signify the device's advertising/pairing state.
-- A faster 200ms interval (200ms on, 200ms off) provides more immediate and noticeable visual feedback, which is standard for devices in a discoverable mode.
-- This change improves the user experience and makes the device state easier to diagnose at a glance.
-
-**Implementation Details:**
-- The `period_ms` for `LED_PATTERN_ADVERTISING` in `led_control.c` was changed from `1000` to `200`.
-- No other modules were affected, demonstrating the benefit of encapsulating the LED pattern logic.
-
-**Status:**
-- The LED now blinks at a 2.5Hz frequency (400ms cycle time) while advertising, as per user request.
+**Status:**  
+LED now blinks at a more noticeable rate during advertising.
 
 ---
 
 ## 2025-08-02: Multi-LED Architecture Implementation & Working Milestone
 
-### Major Architectural Enhancement: Multi-LED System
-**Developer Implementation:**
-- **Scalable LED Management**: Implemented enum-based LED identification (`LED_ID_HEARTBEAT`, `LED_ID_PAIRING`)
-- **Pattern-Based Control**: Added `LED_PATTERN_HEARTBEAT` (500ms) and `LED_PATTERN_ADVERTISING` (200ms)
-- **Device Tree Integration**: Professional GPIO handling with `GPIO_DT_SPEC_GET(DT_ALIAS(led0/led1), gpios)`
-- **State Machine Architecture**: Individual LED state tracking with efficient update loop
+**Enhancement:**  
+Implemented scalable, pattern-based multi-LED system with device tree integration and state machine architecture.
 
-### System Integration Success
-**LED Assignment Strategy:**
-- **LED0 (Heartbeat)**: System alive indicator - continuous 500ms blink from startup
-- **LED1 (Pairing)**: BLE status indicator - fast 200ms blink during advertising
-- **Clean Module Boundaries**: Each subsystem controls its own LED without conflicts
-
-### Build & Test Results
-**Build Status:** ✅ 100% SUCCESS
-- **Memory Efficiency**: FLASH: 166,084 bytes (11.36%), RAM: 31,396 bytes (16.31%)
-- **Hardware Verification**: User confirmed MIPE device operating correctly
-- **BLE Functionality**: Device advertising as "MIPE" with proper LED indication
-
-### Milestone Backup Created
-**Timestamp:** 2025-08-02 09:51:01
-**Backup Location:** `mipe_device_backup_20250802_095101_working_multi_led_ble/`
-**Files Preserved:** 32 source files (41,079 bytes total)
-**Rationale:** Stable working baseline with multi-LED BLE system ready for next development phase
-
-### Architecture Quality Assessment
-**Excellent Implementation:**
-- ✅ **Scalability**: Easy to add more LEDs and patterns
-- ✅ **Maintainability**: Clear enums, proper state management
-- ✅ **Efficiency**: Minimal memory footprint with maximum functionality
-- ✅ **Professional Standards**: Device tree integration, proper logging, clean interfaces
-
-**Next Development Phase Ready:**
-- Foundation established for ping measurement functionality
-- Connection management ready for enhancement
-- Battery monitoring system in place
-- Robust LED feedback system operational
+**Assessment:**  
+System is efficient, maintainable, and ready for next development phase.
 
 ---
 
 ## 2025-08-26: Device Name Change to "MIPE" with Preserved BLE Configuration
 
-**Decision:**
-Successfully changed device name from "SinglePing Mipe" to "MIPE" while maintaining the critical BLE configuration that enables reliable RSSI streaming.
+**Decision & Changes:**  
+Successfully changed device name and preserved critical BLE configuration for RSSI streaming.
 
-**Changes Made:**
-1. **Host Device**: Updated `MIPE_DEVICE_NAME` from "SinglePing Mipe" to "MIPE" in ble_central.c
-2. **Mipe Device**: Updated scan response name from "SinglePing Mipe" to "MIPE" in ble_service.c
-3. **Host Logging**: Updated startup message from "Scanning for: SinglePing Mipe" to "Scanning for: MIPE"
-4. **Configuration**: Confirmed `CONFIG_BT_DEVICE_NAME="MIPE"` already set in Mipe prj.conf
-
-**Critical BLE Configuration Preserved:**
-- **Mipe Advertising**: Uses `BT_LE_ADV_OPT_CONN` with name in scan response only
-- **Host Scanning**: Uses `BT_LE_SCAN_TYPE_ACTIVE` to request scan responses  
-- **No Zephyr Conflicts**: Avoids `BT_LE_ADV_OPT_USE_NAME` and `BT_LE_ADV_OPT_NO_NAME`
-- **Advertising Data**: Contains only flags and UUID (no device name)
-
-**Why This Change Succeeded:**
-1. **Consistent Approach**: Maintained the scan-response-only advertising strategy
-2. **Active Scanning**: Host continues to use active scanning to receive scan responses
-3. **No Configuration Conflicts**: Avoided manual advertising data changes that conflict with Zephyr
-4. **Complete System Update**: Updated both scanning and advertising components simultaneously
-
-**Verification Status:**
-- ✅ Host device now scans for "MIPE" instead of "SinglePing Mipe"
-- ✅ Mipe device advertises as "MIPE" in scan response
-- ✅ Critical BLE configuration preserved for RSSI streaming
-- ✅ System ready for testing with new device name
+**Verification Status:**  
+System ready for testing with new device name.
 
 ---
+
+## 2025-08-27: Zephyr Interrupt Handler Limitations and Work Queue Pattern
+
+**Decision:**  
+Moved LED timing logic out of interrupt handlers into work queues to comply with Zephyr RTOS best practices.
+
+**Lessons Learned:**  
+Interrupt handlers should be minimal; timing operations must occur in thread context.
+
+---
+
+## 2025-08-27: UART Serial Debugging and Monitoring Infrastructure
+
+**Decision:**  
+Established robust UART serial debugging infrastructure for real-time monitoring and troubleshooting.
+
+**Benefits:**  
+Immediate feedback, improved debugging, and verification of system behavior.
+
+---
+
+## 2025-08-27: GPIO and Zephyr API Usage – nRF54L15DK
+
+**Decision:**  
+Transitioned from direct, generic GPIO manipulation to Zephyr’s device tree-driven API for all LED and button interactions on nRF54L15DK.
+
+**Rationale:**  
+- Zephyr’s device tree abstraction ensures hardware portability, maintainability, and clarity.
+- Using `gpio_dt_spec` and device tree aliases (`DT_ALIAS`) allows code to adapt to board changes without rewriting logic.
+- Zephyr’s API provides safe, race-free access to GPIO, supports interrupts, and integrates with RTOS features (work queues, callbacks).
+
+**Implementation Details:**  
+- **LEDs and Buttons:**  
+  - Defined using device tree aliases (`DT_ALIAS(led0)`, `DT_ALIAS(sw1)`, etc.).
+  - Accessed via `GPIO_DT_SPEC_GET` for type-safe pin/port configuration.
+  - All initialization and control use Zephyr’s `gpio_pin_configure_dt`, `gpio_pin_set_dt`, and interrupt configuration functions.
+- **Interrupt Handling:**  
+  - Button interrupts are configured with `GPIO_INT_EDGE_FALLING` for event-driven input.
+  - Handlers are minimal; deferred actions (e.g., LED flashing) are executed via Zephyr work queues (`k_work`), ensuring compliance with RTOS constraints.
+- **Work Queues:**  
+  - All time-dependent or blocking operations (like LED flashing) are moved out of interrupt context and into work queue handlers.
+  - This pattern avoids issues with sleeping or delays in ISRs and supports future scalability (e.g., multi-threaded event handling).
+- **Boot Sequence:**  
+  - Uses `all_leds_on()` and `all_leds_off()` for visual feedback, leveraging device tree-driven LED control.
+- **BLE Integration:**  
+  - Button events can trigger BLE operations (scanning, connecting) using Zephyr’s Bluetooth API, with status feedback via LEDs.
+
+**Architectural Value & Best Practices:**  
+- **Device Tree First:**  
+  Always define hardware resources in the device tree and use Zephyr’s macros for access. This decouples code from board specifics and supports easy migration.
+- **Minimal ISR Logic:**  
+  Keep interrupt handlers short; use work queues for anything that may block, sleep, or require significant processing.
+- **Explicit Initialization:**  
+  Check device readiness (`gpio_is_ready_dt`) before configuring pins. Log and handle failures gracefully.
+- **Consistent Logging:**  
+  Use Zephyr’s logging API for all status, error, and debug output. This aids troubleshooting and system monitoring.
+- **Modular Structure:**  
+  Separate hardware abstraction (LED/button control) from application logic (BLE, state machines) for maintainability.
+- **Documentation:**  
+  Record all architectural decisions, especially those affecting hardware abstraction, concurrency, and event handling.
+
+**Known Pitfalls & Lessons Learned:**  
+- Sleeping or blocking in interrupt context leads to unreliable behavior; always use work queues for deferred actions.
+- Direct pin manipulation without device tree abstraction risks board incompatibility and maintenance headaches.
+- Always verify pin and port readiness before use; hardware initialization failures should be logged and handled.
+
+**Impact:**  
+- Codebase is now portable, maintainable, and robust against hardware changes.
+- Future developers and agents can extend or migrate the project with minimal risk of repeating past mistakes.
+- System is compliant with Zephyr RTOS best practices, supporting reliable operation and easy debugging.
+
+**References:**  
+- [Zephyr GPIO API](https://docs.zephyrproject.org/latest/hardware/peripherals/gpio.html)
+- [Zephyr Device Tree Guide](https://docs.zephyrproject.org/latest/guides/dts/index.html)
+- [Zephyr Work Queue Pattern](https://docs.zephyrproject.org/latest/kernel/workqueue/index.html)
+
+---
+
+*This entry supersedes any previous logs referencing direct GPIO manipulation. All future code and architectural decisions should follow Zephyr’s device tree and API conventions for hardware abstraction.*
+
+---
+
+## Future Entries
 
 Further entries will document:
 - Major architectural changes
@@ -402,3 +296,8 @@ Further entries will document:
 - Notable review feedback
 - Hardware testing results and rollback decisions
 - Milestone backups and development phases
+
+---
+
+**Tip:**  
+Consider adding a "Known Pitfalls" section at the end to help future agents avoid repeat mistakes.
