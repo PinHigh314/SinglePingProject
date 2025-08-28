@@ -53,8 +53,23 @@ static struct k_work ble_scan_work;
 /* Work structure for BLE disconnection */
 static struct k_work ble_disconnect_work;
 
+/* Delayed work for BLE connection */
+static struct k_work_delayable ble_connect_work;
+
+/* Timer for reconnection cooldown */
+static struct k_timer reconnect_timer;
+
 /* BLE connection handle */
 static struct bt_conn *current_conn;
+
+/* Reconnection flag */
+static bool can_reconnect = true;
+
+/* Connection lock */
+static atomic_t is_connecting = ATOMIC_INIT(false);
+
+/* Address of the device to connect to */
+static bt_addr_le_t connect_addr;
 
 /* MIPE device name to scan for */
 #define MIPE_DEVICE_NAME "MIPE"
@@ -126,6 +141,44 @@ static void led1_flash_work_handler(struct k_work *work)
     LOG_INF("WORKQUEUE: LED1 flash completed");
 }
 
+/* Reconnection timer handler */
+static void reconnect_timer_handler(struct k_timer *timer_id)
+{
+    can_reconnect = true;
+    LOG_INF("Reconnection enabled");
+}
+
+/* BLE connect work handler */
+static void ble_connect_work_handler(struct k_work *work)
+{
+    // Release any lingering connection object for this address
+    struct bt_conn *old_conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, &connect_addr);
+    if (old_conn) {
+        bt_conn_unref(old_conn);
+    }
+
+    struct bt_conn_le_create_param create_param = {
+        .options = BT_CONN_LE_OPT_NONE,
+        .interval = BT_GAP_SCAN_FAST_INTERVAL,
+        .window = BT_GAP_SCAN_FAST_WINDOW,
+        .interval_coded = 0,
+        .window_coded = 0,
+        .timeout = 0,
+    };
+
+    int err = bt_conn_le_create(&connect_addr, &create_param, BT_LE_CONN_PARAM_DEFAULT, &current_conn);
+    if (err) {
+        LOG_ERR("Failed to create connection: %d", err);
+        if (current_conn) {
+            bt_conn_unref(current_conn);
+            current_conn = NULL;
+        }
+        atomic_set(&is_connecting, false); // Reset on failure
+    } else {
+        LOG_INF("Connecting to MIPE device...");
+    }
+}
+
 /* BLE scan callback function */
 static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t adv_type,
                     struct net_buf_simple *buf)
@@ -168,56 +221,14 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t adv_type,
         /* Restore buffer state */
         net_buf_simple_restore(buf, &state);
         
-        if (found_name) {
+        if (found_name && !atomic_get(&is_connecting)) {
+            atomic_set(&is_connecting, true);
             LOG_INF("MIPE device found: %s, RSSI: %d, Adv type: %d", addr_str, rssi, adv_type);
             
-            /* Stop scanning and connect */
+            /* Stop scanning and schedule connection */
             bt_le_scan_stop();
-            
-            /* Clean up any existing connection reference before creating new one */
-            if (current_conn) {
-                bt_conn_unref(current_conn);
-                current_conn = NULL;
-                k_msleep(20);
-            }
-            
-            /* Additional cleanup: check if there are any connections to this address */
-            struct bt_conn *existing_conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, addr);
-            if (existing_conn) {
-                LOG_INF("Found existing connection to this address, cleaning up");
-                bt_conn_disconnect(existing_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-                k_msleep(50);
-                bt_conn_unref(existing_conn);
-                k_msleep(50);
-            }
-            // Check again
-            existing_conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, addr);
-            if (existing_conn) {
-                LOG_WRN("Still have lingering connection object. Skipping connection attempt.");
-                bt_conn_unref(existing_conn);
-                return;
-            }
-
-            struct bt_conn_le_create_param create_param = {
-                .options = BT_CONN_LE_OPT_NONE,
-                .interval = BT_GAP_SCAN_FAST_INTERVAL,
-                .window = BT_GAP_SCAN_FAST_WINDOW,
-                .interval_coded = 0,
-                .window_coded = 0,
-                .timeout = 0,
-            };
-            int err = bt_conn_le_create(addr, &create_param, BT_LE_CONN_PARAM_DEFAULT, &current_conn);
-            if (err) {
-                LOG_ERR("Failed to create connection: %d", err);
-                if (current_conn) {
-                    bt_conn_unref(current_conn);
-                    current_conn = NULL;
-                }
-                k_msleep(1000); // Shorter delay before retry
-                bt_le_scan_start(&scan_params, scan_cb);
-            } else {
-                LOG_INF("Connecting to MIPE device...");
-            }
+            bt_addr_le_copy(&connect_addr, addr);
+            k_work_schedule(&ble_connect_work, K_MSEC(50));
         }
     }
 }
@@ -235,7 +246,6 @@ static void ble_disconnect_work_handler(struct k_work *work)
 static void ble_scan_work_handler(struct k_work *work)
 {
     LOG_INF("Starting BLE scan for MIPE device...");
-    set_ble_state(BLE_STATE_SCANNING);
     
     /* Stop any existing scan first */
     bt_le_scan_stop();
@@ -249,7 +259,6 @@ static void ble_scan_work_handler(struct k_work *work)
         err = bt_le_scan_start(&scan_params, scan_cb);
         if (err) {
             LOG_ERR("Second scan attempt failed: %d", err);
-            set_ble_state(BLE_STATE_IDLE);
             return;
         }
     }
@@ -260,47 +269,24 @@ static void ble_scan_work_handler(struct k_work *work)
     k_msleep(5000);
     bt_le_scan_stop();
     LOG_INF("BLE scan completed - no MIPE device found");
-    set_ble_state(BLE_STATE_IDLE);
 }
 
-/* BLE connection state enumeration */
-typedef enum {
-    BLE_STATE_IDLE,
-    BLE_STATE_SCANNING,
-    BLE_STATE_CONNECTING,
-    BLE_STATE_CONNECTED,
-    BLE_STATE_DISCONNECTED
-} ble_state_t;
-
-static ble_state_t ble_state = BLE_STATE_IDLE;
-
-/* Helper to log and set state */
-static void set_ble_state(ble_state_t new_state) {
-    static const char *state_names[] = {
-        "IDLE", "SCANNING", "CONNECTING", "CONNECTED", "DISCONNECTED"
-    };
-    LOG_INF("BLE STATE: %s → %s", state_names[ble_state], state_names[new_state]);
-    ble_state = new_state;
-}
 
 /* BLE connection callback */
 static void connected(struct bt_conn *conn, uint8_t err)
 {
+    atomic_set(&is_connecting, false);
     if (err) {
         LOG_ERR("Connection failed: %d", err);
-        set_ble_state(BLE_STATE_IDLE);
         return;
     }
     
     current_conn = bt_conn_ref(conn);
     LOG_INF("Connected to MIPE device");
-    set_ble_state(BLE_STATE_CONNECTED);
     
     /* Flash LED3 to indicate successful connection */
     k_work_submit(&led3_flash_work);
 }
-
-static bool can_reconnect = true;
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
@@ -310,11 +296,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         bt_conn_unref(current_conn);
         current_conn = NULL;
     }
-    set_ble_state(BLE_STATE_DISCONNECTED);
+    atomic_set(&is_connecting, false);
     can_reconnect = false;
     /* Start a timer or delay to re-enable reconnection */
-    k_msleep(2000); // Wait 2 seconds (or use a k_timer for non-blocking)
-    can_reconnect = true;
+    k_timer_start(&reconnect_timer, K_SECONDS(2), K_NO_WAIT);
 }
 
 /* BLE connection callbacks */
@@ -337,12 +322,14 @@ static void button_pressed_handler(const struct device *dev, struct gpio_callbac
             if (current_conn) {
                 LOG_INF("SW3 pressed - Scheduling disconnect via work queue");
                 k_work_submit(&ble_disconnect_work);
-            } else {
+            } else if (can_reconnect) {
                 LOG_INF("SW3 pressed - Initiating Mipe search");
                 LOG_INF("DEBUG: Button3 interrupt triggered successfully");
                 
                 /* Start BLE scanning for MIPE device */
                 k_work_submit(&ble_scan_work);
+            } else {
+                LOG_WRN("SW3 pressed - Reconnection not allowed yet");
             }
         }
 }
@@ -424,6 +411,10 @@ int main(void)
     k_work_init(&led1_flash_work, led1_flash_work_handler);
     k_work_init(&ble_scan_work, ble_scan_work_handler);
     k_work_init(&ble_disconnect_work, ble_disconnect_work_handler);
+    k_work_init_delayable(&ble_connect_work, ble_connect_work_handler);
+
+    /* Initialize timer */
+    k_timer_init(&reconnect_timer, reconnect_timer_handler, NULL);
 
     /* Initialize Bluetooth */
     int err = bt_enable(NULL);
