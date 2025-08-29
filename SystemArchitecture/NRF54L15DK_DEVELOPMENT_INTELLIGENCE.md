@@ -947,3 +947,15 @@ activity_main.xml           // UI layout
 *This document represents battle-tested knowledge for nRF54L15DK development. Follow these guidelines to ensure successful builds and avoid common pitfalls.*
 
 **LAST UPDATED: 2025-08-09 - Added critical CDC limitations, Android development intelligence, and proper naming conventions.**
+
+WARNING: Do NOT use deprecated BLE advertising macros or flags!
+Deprecated: BT_LE_ADV_OPT_CONNECTABLE, BT_LE_ADV_CONN
+Use BT_LE_ADV_OPT_CONN for connectable advertising in Zephyr v3.1.0+
+
+ Example:
+const struct bt_le_adv_param adv_params = {
+    .options = BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_USE_NAME,
+    .interval_min = BT_GAP_ADV_FAST_INT_MIN_2,
+    .interval_max = BT_GAP_ADV_FAST_INT_MAX_2,
+    .peer = NULL,
+};
