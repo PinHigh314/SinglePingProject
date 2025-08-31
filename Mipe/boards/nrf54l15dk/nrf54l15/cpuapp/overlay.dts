@@ -1,0 +1,37 @@
+/ {
+    aliases {
+        adc0 = &adc0;
+    };
+};
+
+&adc0 {
+    status = "okay";
+    #address-cells = <1>;
+    #size-cells = <0>;
+    
+    channel@0 {
+        reg = <0>;
+        zephyr,gain = "ADC_GAIN_1_4";
+        zephyr,reference = "ADC_REF_INTERNAL";
+        zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+        zephyr,input-positive = <NRF_SAADC_INPUT_AIN0>;
+        zephyr,resolution = <12>;
+        zephyr,oversampling = <4>;
+    };
+};
+
+/* Enable P0.26 (AIN0) for ADC input */
+&pinctrl {
+    adc0_default: adc0_default {
+        group1 {
+            psels = <NRF_PSEL(ADC_INPUT, 0, 26)>;
+        };
+    };
+    
+    adc0_sleep: adc0_sleep {
+        group1 {
+            psels = <NRF_PSEL(ADC_INPUT, 0, 26)>;
+            low-power-enable;
+        };
+    };
+};

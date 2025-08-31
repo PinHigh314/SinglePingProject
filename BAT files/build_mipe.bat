@@ -1,112 +1,171 @@
 @echo off
+setlocal
+
 echo ========================================
-echo    SinglePing Project - Build Mipe Device
+echo SinglePing Mipe Device Build Script
+echo Using stable cmake/ninja build process
 echo ========================================
 echo.
-
-echo Setting up Nordic Connect SDK environment...
+echo Usage: build_mipe.bat [options] [description]
+echo   Options:
+echo     --clean or -c : Clean build (removes build directory first)
+echo   Description:
+echo     Optional description for the output hex file
+echo     Example: build_mipe.bat v9_restored
+echo     Example: build_mipe.bat --clean test_battery_service
 echo.
 
-REM Set environment variables for nRF Connect SDK v3.1.0
-set ZEPHYR_BASE=C:\ncs\v3.1.0\zephyr
-set ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+:: Set environment variables for external Zephyr SDK
+echo Setting up environment variables...
+set ZEPHYR_BASE=C:\zephyr
 set ZEPHYR_SDK_INSTALL_DIR=C:\ncs\toolchains\b8b84efebd\opt\zephyr-sdk
+set ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
-REM Add Nordic toolchain to PATH
-set PATH=C:\ncs\toolchains\b8b84efebd\opt\bin;%PATH%
+:: Add toolchain to PATH
+set PATH=C:\ncs\toolchains\b8b84efebd\opt\bin;C:\ncs\toolchains\b8b84efebd\opt\bin\Scripts;%PATH%
 
 echo Environment configured:
 echo   ZEPHYR_BASE: %ZEPHYR_BASE%
-echo   ZEPHYR_TOOLCHAIN_VARIANT: %ZEPHYR_TOOLCHAIN_VARIANT%
 echo   ZEPHYR_SDK_INSTALL_DIR: %ZEPHYR_SDK_INSTALL_DIR%
+echo   ZEPHYR_TOOLCHAIN_VARIANT: %ZEPHYR_TOOLCHAIN_VARIANT%
 echo.
 
-echo ========================================
-echo Building MIPE DEVICE...
-echo ========================================
-echo.
+:: Check for clean build flag
+set clean_build=0
+if "%1"=="--clean" set clean_build=1
+if "%1"=="-c" set clean_build=1
 
-REM Navigate to project root first, then to Mipe device directory
-cd /d "C:\Development\SinglePingProject"
-echo Project root: %CD%
-cd Mipe\mipe_device
+:: Navigate to Mipe device directory
+cd /d "%~dp0..\Mipe"
 echo Working directory: %CD%
 echo.
 
-REM Verify we're in the correct directory with CMakeLists.txt
+:: Check if CMakeLists.txt exists
 if not exist CMakeLists.txt (
-    echo ERROR: CMakeLists.txt not found in current directory!
-    echo Expected: %CD%
-    echo.
-    echo Troubleshooting:
-    echo   1. Ensure you're running from the project root
-    echo   2. Check that Mipe\mipe_device directory exists
-    echo   3. Verify CMakeLists.txt is present
-    echo.
+    echo ERROR: CMakeLists.txt not found in %CD%
+    echo Please ensure you're in the correct directory
     pause
     exit /b 1
 )
 
-echo CMakeLists.txt found - proceeding with build...
-echo.
-
-REM Clean previous build if it exists
-if exist build (
-    echo Cleaning previous build directory...
-    rmdir /s /q build
-    echo Build directory cleaned.
-    echo.
+:: Clean build directory if requested
+if %clean_build%==1 (
+    echo Clean build requested...
+    if exist build (
+        echo Removing existing build directory...
+        rmdir /s /q build
+    )
 )
 
-echo Starting west build for Mipe device...
+:: Check if build directory needs to be created
+if not exist build\CMakeCache.txt (
+    if exist build (
+        echo Build directory exists but no CMakeCache.txt found, cleaning...
+        rmdir /s /q build
+    )
+)
+
+:: Configure with CMake
+echo Configuring project with CMake...
 echo Board: nrf54l15dk/nrf54l15/cpuapp
-echo Source directory: %CD%
 echo.
 
-REM Run Mipe device build with west
-west build --board nrf54l15dk/nrf54l15/cpuapp
-if %ERRORLEVEL% neq 0 (
+echo Running: cmake -B build -G Ninja -DBOARD=nrf54l15dk/nrf54l15/cpuapp
+cmake -B build -G Ninja -DBOARD=nrf54l15dk/nrf54l15/cpuapp
+
+if %errorlevel% neq 0 (
     echo.
-    echo ERROR: Mipe device build failed!
+    echo CMake configuration failed!
+    pause
+    exit /b 1
+)
+
+echo.
+echo CMake configuration successful!
+echo.
+
+:: Build with Ninja
+echo Building project with Ninja...
+echo Running: ninja -C build
+ninja -C build
+
+if %errorlevel% neq 0 (
     echo.
-    echo Troubleshooting tips:
-    echo   1. Ensure Nordic Connect SDK v3.1.0 is installed
-    echo   2. Check that west is properly configured
-    echo   3. Verify ZEPHYR_BASE points to correct zephyr installation
-    echo   4. Current working directory: %CD%
-    echo.
+    echo Build failed!
     pause
     exit /b 1
 )
 
 echo.
 echo ========================================
-echo Mipe Device Build: SUCCESS
+echo Build Completed Successfully!
 echo ========================================
 echo.
 
-echo Build artifacts created:
+:: Display build artifacts
 if exist build\zephyr\zephyr.hex (
-    echo   - build/zephyr/zephyr.hex
-    for %%F in (build\zephyr\zephyr.hex) do echo     Size: %%~zF bytes
-) else (
-    echo   - build/zephyr/zephyr.hex (NOT FOUND)
+    echo Build artifacts:
+    echo   HEX file: %CD%\build\zephyr\zephyr.hex
+    for %%F in (build\zephyr\zephyr.hex) do echo   Size: %%~zF bytes
 )
 
 if exist build\zephyr\zephyr.elf (
-    echo   - build/zephyr/zephyr.elf
-    for %%F in (build\zephyr\zephyr.elf) do echo     Size: %%~zF bytes
-) else (
-    echo   - build/zephyr/zephyr.elf (NOT FOUND)
+    echo   ELF file: %CD%\build\zephyr\zephyr.elf
+    for %%F in (build\zephyr\zephyr.elf) do echo   Size: %%~zF bytes
 )
 
 echo.
-echo Build completed successfully!
-echo.
-echo To flash the Mipe device:
+echo To flash the device, use:
 echo   nrfjprog --program build\zephyr\zephyr.hex --chiperase --verify -r
-echo.
-echo Or use nRF Connect Programmer app
+echo Or use the nRF Connect Programmer app
 echo.
 
+:: Get description from command line argument or use default
+set description=%2
+if "%description%"=="" set description=build
+
+:: Get current date and time for versioning with proper formatting
+for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value 2^>nul') do set "dt=%%a"
+if "%dt%"=="" (
+    REM Fallback to PowerShell if wmic not available
+    for /f "tokens=1-5 delims=: " %%a in ('powershell -Command "Get-Date -Format 'yy MM dd HH mm'"') do (
+        set "YY=%%a"
+        set "MM=%%b"
+        set "DD=%%c"
+        set "HH=%%d"
+        set "Min=%%e"
+    )
+) else (
+    set "YY=%dt:~2,2%"
+    set "MM=%dt:~4,2%"
+    set "DD=%dt:~6,2%"
+    set "HH=%dt:~8,2%"
+    set "Min=%dt:~10,2%"
+)
+
+REM Ensure 2-digit minutes
+if "%Min%"=="" set "Min=00"
+if "%Min:~1,1%"=="" set "Min=0%Min%"
+
+REM Create timestamp (YYMMDD_HHMM)
+set "timestamp=%YY%%MM%%DD%_%HH%%Min%"
+
+:: Create output filename
+set output_name=Mipe_%timestamp%.hex
+
+:: Copy hex file to compiled_code directory
+echo Copying hex file to compiled_code directory...
+if not exist "%~dp0..\compiled_code" mkdir "%~dp0..\compiled_code"
+copy build\zephyr\zephyr.hex "%~dp0..\compiled_code\%output_name%" >nul
+
+if %errorlevel% equ 0 (
+    echo Hex file copied to: compiled_code\%output_name%
+    
+    :: Update version log
+    echo %date% %time% - Built: %output_name% >> "%~dp0..\compiled_code\version_log.md"
+) else (
+    echo Warning: Failed to copy hex file to compiled_code directory
+)
+
+echo.
 pause

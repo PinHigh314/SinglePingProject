@@ -1,194 +1,167 @@
-/*
- * Host Device - nRF54L15DK
- * BLE Central Application - Simplified Working Version
- * 
- * This device acts as a BLE central device that can:
- * - Scan for BLE devices
- * - Connect to devices
- * - Handle basic BLE communication
- */
-
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
-#include <zephyr/bluetooth/hci.h>
-#include "ble_service.h"
+#include <zephyr/bluetooth/gatt.h>
+#include <stdio.h>
+#include <string.h>
 
 LOG_MODULE_REGISTER(host_main, LOG_LEVEL_INF);
 
-static struct bt_conn *app_conn = NULL;
+// ========================================
+// GLOBAL VARIABLES
+// ========================================
 
-/* Basic advertising data */
+static struct bt_conn *app_conn = NULL;
+static bool app_connected = false;
+static bool advertising_active = false;
+
+// ========================================
+// ADVERTISING DATA
+// ========================================
+
+/* Advertising data - just device name */
 static const struct bt_data ad[] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, strlen(CONFIG_BT_DEVICE_NAME)),
+    BT_DATA(BT_DATA_NAME_COMPLETE, "MIPE_HOST_A1B2", 14),
 };
 
-static const struct bt_le_adv_param adv_params = {
-    .options = BT_LE_ADV_OPT_CONN,
-    .interval_min = BT_GAP_ADV_FAST_INT_MIN_2,
-    .interval_max = BT_GAP_ADV_FAST_INT_MAX_2,
-    .peer = NULL,
-};
+/* Advertising parameters - fast advertising (100ms intervals) */
+static struct bt_le_adv_param adv_param = BT_LE_ADV_PARAM_INIT(
+    BT_LE_ADV_OPT_CONN,
+    BT_GAP_ADV_FAST_INT_MIN_2,  /* 100ms min */
+    BT_GAP_ADV_FAST_INT_MAX_2,  /* 150ms max */
+    NULL
+);
+
+// ========================================
+// BLUETOOTH READY CALLBACK
+// ========================================
+
+static void bt_ready(int err)
+{
+    if (err) {
+        LOG_ERR("Bluetooth init failed (err %d)", err);
+        return;
+    }
+
+    LOG_INF("Bluetooth initialized");
+    LOG_INF("BLE Peripheral mode ready");
+
+    // Start advertising
+    err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), NULL, 0);
+    if (err) {
+        LOG_ERR("Advertising failed to start: %d", err);
+        return;
+    }
+
+    advertising_active = true;
+    LOG_INF("Advertising started - Device name: MIPE_HOST_A1B2");
+}
+
+// ========================================
+// CONNECTION CALLBACKS
+// ========================================
 
 static void connected(struct bt_conn *conn, uint8_t err)
 {
     char addr[BT_ADDR_LE_STR_LEN];
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
+    
     if (err) {
-        LOG_ERR("Connection failed (err %u)", err);
+        LOG_ERR("Connection failed to %s (err %u)", addr, err);
+        app_connected = false;
         return;
     }
-
+    
+    LOG_INF("App connected: %s", addr);
     app_conn = bt_conn_ref(conn);
-    LOG_INF("=== DEVICE CONNECTED ===");
-    LOG_INF("Address: %s", addr);
-    LOG_INF("Connection established successfully");
-    
-    /* Request connection parameter update for stability */
-    struct bt_le_conn_param param = {
-        .interval_min = BT_GAP_INIT_CONN_INT_MIN,  /* 30ms */
-        .interval_max = BT_GAP_INIT_CONN_INT_MAX,  /* 50ms */
-        .latency = 0,
-        .timeout = 400,  /* 4 seconds */
-    };
-    
-    err = bt_conn_le_param_update(conn, &param);
-    if (err) {
-        LOG_WRN("Failed to request connection parameter update: %d", err);
-    } else {
-        LOG_INF("Connection parameter update requested");
-    }
+    app_connected = true;
+    advertising_active = false;
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
     char addr[BT_ADDR_LE_STR_LEN];
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-    LOG_INF("Disconnected %s (reason %u)", addr, reason);
-
-    if (conn == app_conn) {
+    
+    LOG_INF("App disconnected: %s (reason %u)", addr, reason);
+    
+    if (app_conn == conn) {
         bt_conn_unref(app_conn);
         app_conn = NULL;
+        app_connected = false;
         
-        LOG_INF("=== DEVICE DISCONNECTED ===");
-        LOG_INF("Reason: 0x%02x", reason);
+        // Small delay to ensure clean disconnection
+        k_msleep(100);
         
-        /* Automatically restart advertising */
-        LOG_INF("Restarting advertising for device discovery");
-        int err = bt_le_adv_start(&adv_params, ad, ARRAY_SIZE(ad), NULL, 0);
+        // Restart advertising with proper error handling
+        int err = bt_le_adv_stop();
+        if (err && err != -EALREADY) {
+            LOG_WRN("Failed to stop advertising (err %d)", err);
+        }
+        
+        k_msleep(100);
+        
+        err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), NULL, 0);
         if (err) {
             LOG_ERR("Failed to restart advertising (err %d)", err);
-            /* Try again after a delay */
+            // Try again after a longer delay
             k_msleep(1000);
-            err = bt_le_adv_start(&adv_params, ad, ARRAY_SIZE(ad), NULL, 0);
+            err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), NULL, 0);
             if (err) {
                 LOG_ERR("Second attempt to restart advertising failed (err %d)", err);
+            } else {
+                advertising_active = true;
+                LOG_INF("Advertising restarted (second attempt)");
             }
+        } else {
+            advertising_active = true;
+            LOG_INF("Advertising restarted");
         }
     }
 }
 
-static void bt_ready(void)
-{
-    int err;
-
-    LOG_INF("Bluetooth initialized");
-
-    /* Start advertising */
-    err = bt_le_adv_start(&adv_params, ad, ARRAY_SIZE(ad), NULL, 0);
-    if (err) {
-        LOG_ERR("Advertising failed to start (err %d)", err);
-        return;
-    }
-
-    LOG_INF("Advertising started - Device name: %s", CONFIG_BT_DEVICE_NAME);
-}
-
-static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
-{
-    char addr[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-    LOG_INF("Passkey for %s: %06u", addr, passkey);
-}
-
-static void auth_cancel(struct bt_conn *conn)
-{
-    char addr[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-    LOG_INF("Pairing cancelled: %s", addr);
-}
-
-static struct bt_conn_auth_cb auth_cb_display = {
-    .passkey_display = auth_passkey_display,
-    .passkey_entry = NULL,
-    .cancel = auth_cancel,
+static struct bt_conn_cb conn_callbacks = {
+    .connected = connected,
+    .disconnected = disconnected,
 };
 
-static void scan_cb(const struct bt_le_scan_recv_info *info,
-                    struct bt_le_scan_recv_info *scan_info)
-{
-    char addr[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(info->addr, addr, sizeof(addr));
-
-    LOG_INF("Device found: %s", addr);
-    LOG_INF("  RSSI: %d", info->rssi);
-    LOG_INF("  Type: %u", info->addr->type);
-}
-
-static struct bt_le_scan_cb scan_callbacks = {
-    .recv = scan_cb,
-};
+// ========================================
+// MAIN APPLICATION
+// ========================================
 
 int main(void)
 {
     int err;
 
-    LOG_INF("Starting Host Device - BLE Central Application");
+    LOG_INF("Starting Host Device - Basic BLE Peripheral");
     LOG_INF("Board: nRF54L15DK");
     LOG_INF("MCU: nRF54L15 (ARM Cortex-M33)");
-    LOG_INF("Zephyr Version: %s", KERNEL_VERSION_STRING);
+    LOG_INF("Features: BLE Peripheral for MotoApp connection");
 
-    /* Initialize BLE service */
-    err = ble_service_init();
-    if (err) {
-        LOG_ERR("BLE service initialization failed: %d", err);
-        return -1;
-    }
+    // Register connection callbacks
+    bt_conn_cb_register(&conn_callbacks);
 
-    /* Initialize Bluetooth */
-    err = bt_enable(&bt_ready);
+    // Initialize Bluetooth
+    err = bt_enable(bt_ready);
     if (err) {
         LOG_ERR("Bluetooth init failed (err %d)", err);
         return -1;
     }
 
-    /* Set authentication callbacks */
-    bt_conn_auth_cb_register(&auth_cb_display);
-
-    /* Set scan callbacks */
-    bt_le_scan_cb_register(&scan_callbacks);
-
     LOG_INF("Host device initialization complete");
     LOG_INF("Starting main application loop...");
 
-    /* Main application loop */
+    // Main application loop
     uint32_t counter = 0;
     
     while (1) {
-        /* Periodic status logging */
+        // Periodic status logging
         if (counter % 100 == 0) {
             LOG_INF("System running - Counter: %u", counter);
-            if (ble_service_is_connected()) {
-                LOG_INF("BLE service: Connected");
-            } else {
-                LOG_INF("BLE service: Not connected");
-            }
+            LOG_INF("App connection: %s", app_connected ? "Connected" : "Disconnected");
+            LOG_INF("Advertising: %s", advertising_active ? "Active" : "Inactive");
         }
         
         counter++;
