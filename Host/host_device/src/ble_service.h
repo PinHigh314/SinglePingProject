@@ -34,6 +34,14 @@
 #define BT_UUID_LOG_DATA_VAL \
     BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef5)
 
+// UUID structs for GATT service definition
+static const struct bt_uuid_128 tmt1_service_uuid = BT_UUID_INIT_128(BT_UUID_TMT1_SERVICE_VAL);
+static const struct bt_uuid_128 rssi_data_uuid = BT_UUID_INIT_128(BT_UUID_RSSI_DATA_VAL);
+static const struct bt_uuid_128 control_uuid = BT_UUID_INIT_128(BT_UUID_CONTROL_VAL);
+static const struct bt_uuid_128 status_uuid = BT_UUID_INIT_128(BT_UUID_STATUS_VAL);
+static const struct bt_uuid_128 mipe_status_uuid = BT_UUID_INIT_128(BT_UUID_MIPE_STATUS_VAL);
+static const struct bt_uuid_128 log_data_uuid = BT_UUID_INIT_128(BT_UUID_LOG_DATA_VAL);
+
 // Control Commands (matching App expectations)
 #define CMD_START_STREAM    0x01
 #define CMD_STOP_STREAM     0x02

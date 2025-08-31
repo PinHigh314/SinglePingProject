@@ -74,35 +74,35 @@ static ssize_t status_read(struct bt_conn *conn,
 // ========================================
 
 BT_GATT_SERVICE_DEFINE(tmt1_service,
-    BT_GATT_PRIMARY_SERVICE(BT_UUID_TMT1_SERVICE_VAL),
+    BT_GATT_PRIMARY_SERVICE(&tmt1_service_uuid),
     
-    BT_GATT_CHARACTERISTIC(BT_UUID_RSSI_DATA_VAL,
+    BT_GATT_CHARACTERISTIC(&rssi_data_uuid.uuid,
                            BT_GATT_CHRC_NOTIFY,
                            BT_GATT_PERM_NONE,
                            NULL, NULL, NULL),
     BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
     
-    BT_GATT_CHARACTERISTIC(BT_UUID_CONTROL_VAL,
+    BT_GATT_CHARACTERISTIC(&control_uuid.uuid,
                            BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
                            BT_GATT_PERM_WRITE,
                            control_write, NULL, NULL),
     
-    BT_GATT_CHARACTERISTIC(BT_UUID_STATUS_VAL,
+    BT_GATT_CHARACTERISTIC(&status_uuid.uuid,
                            BT_GATT_CHRC_READ,
                            BT_GATT_PERM_READ,
                            status_read, NULL, NULL),
     
-    BT_GATT_CHARACTERISTIC(BT_UUID_MIPE_STATUS_VAL,
+    BT_GATT_CHARACTERISTIC(&mipe_status_uuid.uuid,
                            BT_GATT_CHRC_NOTIFY,
                            BT_GATT_PERM_NONE,
                            NULL, NULL, NULL),
     BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
     
-    BT_GATT_CHARACTERISTIC(BT_UUID_LOG_DATA_VAL,
+    BT_GATT_CHARACTERISTIC(&log_data_uuid.uuid,
                            BT_GATT_CHRC_NOTIFY,
                            BT_GATT_PERM_NONE,
                            NULL, NULL, NULL),
-    BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+    BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
 );
 
 // ========================================

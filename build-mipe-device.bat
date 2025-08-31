@@ -2,22 +2,22 @@
 setlocal
 
 echo ========================================
-echo SinglePing Host Device Build Script
+echo SinglePing Mipe Device Build Script
 echo Using stable cmake/ninja build process
 echo ========================================
 echo.
-echo Usage: build-host-device.bat [options] [description]
+echo Usage: build-mipe-device.bat [options] [description]
 echo   Options:
 echo     --clean or -c : Clean build (removes build directory first)
 echo   Description:
 echo     Optional description for the output hex file
-echo     Example: build-host-device.bat v9_restored
-echo     Example: build-host-device.bat --clean test_dual_ble
+echo     Example: build-mipe-device.bat v9_restored
+echo     Example: build-mipe-device.bat --clean test_battery_service
 echo.
 
 :: Set environment variables for external Zephyr SDK
 echo Setting up environment variables...
-set ZEPHYR_BASE=C:\ncs\v3.1.0\zephyr
+set ZEPHYR_BASE=C:\zephyr
 set ZEPHYR_SDK_INSTALL_DIR=C:\ncs\toolchains\b8b84efebd\opt\zephyr-sdk
 set ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
@@ -35,8 +35,8 @@ set clean_build=0
 if "%1"=="--clean" set clean_build=1
 if "%1"=="-c" set clean_build=1
 
-:: Navigate to host_device directory
-cd /d "%~dp0Host\host_device"
+:: Navigate to Mipe device directory
+cd /d "%~dp0Mipe"
 echo Working directory: %CD%
 echo.
 
@@ -161,7 +161,7 @@ REM Create timestamp (YYMMDD_HHMM)
 set "timestamp=%YY%%MM%%DD%_%HH%%Min%"
 
 :: Create output filename
-set output_name=Host_%timestamp%.hex
+set output_name=Mipe_%timestamp%.hex
 
 :: Copy hex file to compiled_code directory
 echo Copying hex file to compiled_code directory...

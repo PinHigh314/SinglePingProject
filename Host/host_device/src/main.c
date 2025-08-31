@@ -5,6 +5,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <stdio.h>
 #include <string.h>
+#include "ble_service.h"
 
 LOG_MODULE_REGISTER(host_main, LOG_LEVEL_INF);
 
@@ -26,11 +27,11 @@ static const struct bt_data ad[] = {
     BT_DATA(BT_DATA_NAME_COMPLETE, "MIPE_HOST_A1B2", 14),
 };
 
-/* Advertising parameters - fast advertising (100ms intervals) */
+/* Advertising parameters - standard intervals (100ms) */
 static struct bt_le_adv_param adv_param = BT_LE_ADV_PARAM_INIT(
     BT_LE_ADV_OPT_CONN,
     BT_GAP_ADV_FAST_INT_MIN_2,  /* 100ms min */
-    BT_GAP_ADV_FAST_INT_MAX_2,  /* 150ms max */
+    BT_GAP_ADV_FAST_INT_MAX_2,  /* 100ms max - consistent interval */
     NULL
 );
 
@@ -78,6 +79,9 @@ static void connected(struct bt_conn *conn, uint8_t err)
     app_conn = bt_conn_ref(conn);
     app_connected = true;
     advertising_active = false;
+    
+    // Notify BLE service of connection
+    ble_service_set_app_conn(conn);
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -92,33 +96,14 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         app_conn = NULL;
         app_connected = false;
         
-        // Small delay to ensure clean disconnection
-        k_msleep(100);
+        // Notify BLE service of disconnection
+        ble_service_set_app_conn(NULL);
         
-        // Restart advertising with proper error handling
-        int err = bt_le_adv_stop();
-        if (err && err != -EALREADY) {
-            LOG_WRN("Failed to stop advertising (err %d)", err);
-        }
+        // Set flag to restart advertising in main loop
+        // This avoids trying to restart advertising immediately in the callback
+        advertising_active = false;
         
-        k_msleep(100);
-        
-        err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), NULL, 0);
-        if (err) {
-            LOG_ERR("Failed to restart advertising (err %d)", err);
-            // Try again after a longer delay
-            k_msleep(1000);
-            err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), NULL, 0);
-            if (err) {
-                LOG_ERR("Second attempt to restart advertising failed (err %d)", err);
-            } else {
-                advertising_active = true;
-                LOG_INF("Advertising restarted (second attempt)");
-            }
-        } else {
-            advertising_active = true;
-            LOG_INF("Advertising restarted");
-        }
+        LOG_INF("Advertising restart scheduled for main loop");
     }
 }
 
@@ -140,6 +125,9 @@ int main(void)
     LOG_INF("MCU: nRF54L15 (ARM Cortex-M33)");
     LOG_INF("Features: BLE Peripheral for MotoApp connection");
 
+    // Initialize BLE service FIRST (before Bluetooth stack)
+    ble_service_init();
+
     // Register connection callbacks
     bt_conn_cb_register(&conn_callbacks);
 
@@ -155,8 +143,34 @@ int main(void)
 
     // Main application loop
     uint32_t counter = 0;
+    uint32_t adv_restart_counter = 0;
     
     while (1) {
+        // Handle advertising restart if needed
+        if (!app_connected && !advertising_active) {
+            adv_restart_counter++;
+            
+            // Wait 3 seconds before attempting to restart advertising
+            if (adv_restart_counter >= 3) {
+                LOG_INF("Attempting to restart advertising...");
+                
+                // Simple approach: just try to start advertising
+                int err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), NULL, 0);
+                if (err == 0) {
+                    advertising_active = true;
+                    adv_restart_counter = 0;
+                    LOG_INF("Advertising restarted successfully");
+                } else {
+                    LOG_WRN("Failed to restart advertising (err %d), will retry in 5 seconds", err);
+                    // Reset counter to try again in 5 seconds
+                    adv_restart_counter = 0;
+                }
+            }
+        } else {
+            // Reset counter when connected or advertising is active
+            adv_restart_counter = 0;
+        }
+        
         // Periodic status logging
         if (counter % 100 == 0) {
             LOG_INF("System running - Counter: %u", counter);
@@ -169,4 +183,32 @@ int main(void)
     }
 
     return 0;
+}
+
+// ========================================
+// CONTROL COMMAND HANDLERS
+// ========================================
+
+void handle_start_stream(void)
+{
+    LOG_INF("Start stream command received");
+    // TODO: Implement stream start logic
+}
+
+void handle_stop_stream(void)
+{
+    LOG_INF("Stop stream command received");
+    // TODO: Implement stream stop logic
+}
+
+void handle_get_status(void)
+{
+    LOG_INF("Get status command received");
+    // TODO: Implement status reporting logic
+}
+
+void handle_mipe_sync(void)
+{
+    LOG_INF("Mipe sync command received");
+    // TODO: Implement Mipe synchronization logic
 }

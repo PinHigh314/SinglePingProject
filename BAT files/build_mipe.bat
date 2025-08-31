@@ -17,7 +17,7 @@ echo.
 
 :: Set environment variables for external Zephyr SDK
 echo Setting up environment variables...
-set ZEPHYR_BASE=C:\zephyr
+set ZEPHYR_BASE=C:\ncs\v3.1.0\zephyr
 set ZEPHYR_SDK_INSTALL_DIR=C:\ncs\toolchains\b8b84efebd\opt\zephyr-sdk
 set ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
