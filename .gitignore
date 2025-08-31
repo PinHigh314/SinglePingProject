@@ -3,5 +3,19 @@
 
 # Ignore Gradle build output directory
 build
+
+# Ignore Zephyr SDK (now external at C:\zephyr)
 sdk-zephyr/
+
+# Ignore system files
 nul
+
+# Ignore build artifacts
+*.hex
+*.elf
+*.bin
+*.map
+
+# Ignore temporary files
+*.tmp
+*.temp

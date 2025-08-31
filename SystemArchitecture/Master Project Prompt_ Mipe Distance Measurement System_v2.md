@@ -1,4 +1,4 @@
-# Mipe Distance Measurement System - Master Project Prompt
+# Mipe Distance Measurement System - Master Project Prompt for SinglePingProject
 
 ## Role Definitions
 
@@ -81,7 +81,6 @@ MotoApp (Android 14+) ←→ BLE ←→ Host (NRF54L15DK) ←→ BLE ←→ Mipe
   - **Data forwarding** of RSSI readings to MotoApp for distance calculation
   - Real-time data streaming to MotoApp
 - **Power**: USB-C from phone (power-only, no data communication)
-- **Verification**: LED status indicators (LED0=heartbeat, LED1=MotoApp, LED2=Mipe)
 
 #### MotoApp (Android 14+)
 - **Primary Role**: Control display, data processing, and cloud link extension of Host
@@ -104,97 +103,21 @@ MotoApp (Android 14+) ←→ BLE ←→ Host (NRF54L15DK) ←→ BLE ←→ Mipe
 
 ## LED Status Indicators
 
-### Host Device LED Specifications
-
-#### LED0 - System Heartbeat
-- **Function**: System operational indicator
-- **Pattern**: Continuous flashing at 500ms intervals
-- **Duty Cycle**: 50% (250ms ON, 250ms OFF)
-- **Behavior**: Always active when Host is powered and operational
-- **Purpose**: Confirms main system loop is running
-
-#### LED1 - MotoApp Connection Status
-- **Pairing Mode**: Flashing at 200ms intervals (100ms ON, 100ms OFF)
-- **Connected State**: Fully lit (solid ON)
-- **Disconnected State**: OFF
-- **Behavior**:
-  - Starts flashing when Host enters MotoApp pairing mode
-  - Switches to solid ON when MotoApp successfully connects
-  - Returns to flashing if connection lost and attempting reconnection
-  - Turns OFF when not in pairing mode and not connected
-
-#### LED2 - Mipe Connection Status
-- **Connected State**: Fully lit (solid ON)
-- **Disconnected State**: OFF
-- **Behavior**:
-  - Turns ON when Mipe device successfully connects to Host
-  - Remains ON during entire Mipe connection session
-  - Turns OFF immediately when Mipe connection is lost
-  - No flashing pattern (Mipe connection is Host-initiated)
-
-#### LED3 - RSSI Data Streaming Status
-- **Streaming Active**: Fully lit (solid ON)
-- **Streaming Inactive**: OFF
-- **Behavior**:
-  - Turns ON when Host begins RSSI sampling from Mipe
-  - Remains ON during entire measurement session
-  - Turns OFF when RSSI streaming stops (STOP_MEASUREMENT command)
-  - Independent of connection status (can be OFF even when connected)
-
-### Mipe Device LED Specifications
-
-#### LED0 - System Heartbeat
-- **Function**: System operational indicator
-- **Pattern**: Continuous flashing at 1000ms intervals (power-optimized)
-- **Duty Cycle**: 10% (100ms ON, 900ms OFF)
-- **Behavior**: Always active when Mipe is powered and operational
-- **Purpose**: Confirms Mipe is alive and responsive (minimal power consumption)
-
-#### LED1 - Host Connection Status
-- **Pairing Mode**: Flashing at 200ms intervals (100ms ON, 100ms OFF)
-- **Connected State**: Fully lit (solid ON)
-- **Disconnected State**: OFF
-- **Behavior**:
-  - Starts flashing when Mipe enters pairing/advertising mode
-  - Switches to solid ON when Host successfully connects
-  - Returns to flashing if connection lost and re-entering pairing mode
-  - Turns OFF when in deep sleep or power-save mode
-
-### LED Status Interpretation Guide
-
-#### Host Device Status Combinations
-- **LED0 Flashing, LED1 OFF, LED2 OFF, LED3 OFF**: System running, no connections
-- **LED0 Flashing, LED1 Flashing, LED2 OFF, LED3 OFF**: Searching for MotoApp
-- **LED0 Flashing, LED1 ON, LED2 OFF, LED3 OFF**: Connected to MotoApp only
-- **LED0 Flashing, LED1 ON, LED2 ON, LED3 OFF**: Connected to both, no measurement
-- **LED0 Flashing, LED1 ON, LED2 ON, LED3 ON**: Full system operational, measuring
-- **LED0 OFF**: System failure or power loss
-
-#### Mipe Device Status Combinations
-- **LED0 Flashing, LED1 OFF**: Powered but not advertising (sleep mode)
-- **LED0 Flashing, LED1 Flashing**: Advertising, waiting for Host connection
-- **LED0 Flashing, LED1 ON**: Connected to Host, ready for measurements
-- **LED0 OFF**: Deep sleep or power loss
-
-### LED Implementation Requirements
+### Host and Mipe Device LED Specifications
+- All codes will boot up with all 4 LEDs flashing for 200ms. This will indicate to User that the firmware is operational
 
 #### Host Device LED Control
 - **Hardware**: Use NRF54L15DK onboard LEDs (LED0-LED3)
 - **Software**: Non-blocking LED control with timer-based state machines
 - **Priority**: LED updates must not interfere with BLE operations
-- **Power**: Minimal impact on USB power consumption
+- **Power**: Not critical
 
 #### Mipe Device LED Control
 - **Hardware**: Use available LEDs on Mipe device (LED0-LED1)
-- **Software**: Power-optimized LED control with minimal current draw
+- **Software**: None allowed
 - **Priority**: LED operations must minimize battery consumption
 - **Sleep Integration**: LEDs must work with power management states
 
-#### LED Timing Specifications
-- **Heartbeat Timing**: Must be precise and consistent
-- **Flash Timing**: 200ms flash must be accurate for user recognition
-- **State Transitions**: LED changes must be immediate (<10ms delay)
-- **Synchronization**: No requirement for LED synchronization between devices
 
 ## Communication Protocol
 
@@ -213,7 +136,8 @@ MotoApp (Android 14+) ←→ BLE ←→ Host (NRF54L15DK) ←→ BLE ←→ Mipe
 ```
 Connection: Standard BLE with GATT services
 Data Flow: Bidirectional (control commands, RSSI data from Mipe, status)
-Frequency: Real-time streaming during measurements
+GATT
+Frequency: Near Real-time streaming during measurements
 Power Impact: Host powered by USB-C, no power constraints
 Key Change: Receives RSSI measurements from Host, calculates distance locally
 ```
@@ -221,20 +145,28 @@ Key Change: Receives RSSI measurements from Host, calculates distance locally
 #### Host ↔ Mipe (Power-Optimized RSSI Source)
 ```
 Connection: RF-configured BLE with fixed parameters for stable RSSI
+Advertising: Fast advertising for RSSI reads by Host, initially 100Hz. 
+Advertising: Mipe will always return to advertising following a disconnect
 Data Flow: Host measures RSSI from Mipe connection (minimal Mipe transmission)
+GATT for battery voltage reading forwarding to host
 Frequency: Continuous RSSI sampling during measurement sessions
 Power Impact: Critical - Mipe optimized for minimal transmission
 Key Change: Host measures signal strength FROM Mipe, forwards to MotoApp
 ```
+#### UART logging
+```
+UART connection should be expected for both Mipe and Host
+Add as many logging points in the codes as possible to deliver clarity to User about which part of the code is being run and what the BLE status parameters are. 
+
 
 #### Simultaneous Connection Architecture
 ```
-Host maintains two concurrent BLE connections:
+Host maintains on occuation two concurrent BLE connections:
 1. BLE Peripheral → MotoApp (data display and control)
-2. BLE Central → Mipe (RSSI measurement source)
+2. BLE Central → Mipe (Brief connection to read battery level, set Mipe parameters)
 
 Data Flow:
-Host measures RSSI from Mipe → Forwards RSSI to MotoApp → MotoApp calculates distance
+Host measures RSSI from Mipe in advetising mode → Forwards RSSI data to MotoApp → MotoApp calculates distance and stores RSSI measurement data
 ```
 
 ### Detailed Data Flow Specifications
@@ -245,7 +177,7 @@ The Host device must collect and forward the following data to MotoApp for dista
 **Primary RSSI Data (Essential)**
 - **Raw RSSI Value**: Signal strength in dBm (e.g., -65 dBm)
 - **Timestamp**: Precise measurement time (microsecond resolution)
-- **Sample Rate**: Configurable (default: 100ms intervals)
+- **Sample Rate**: Configurable by Mipe advertising frequency (default: 100ms intervals)
 - **Data Format**: Signed 8-bit integer for RSSI, 32-bit timestamp
 
 **Connection Quality Data (Important)**
@@ -255,19 +187,14 @@ The Host device must collect and forward the following data to MotoApp for dista
 - **Signal Stability**: RSSI variance over last 10 samples
 
 **Environmental Context Data (Enhanced Accuracy)**
-- **TX Power Level**: Mipe transmission power setting
+- **TX Power Level**: Mipe transmission power setting to max
 - **Channel Information**: BLE channel used for measurement
 - **Interference Level**: Background noise measurement
 - **Temperature**: Host device temperature (affects RF performance)
 
 **Battery and Power Data (System Health - Critical Priority)**
-- **Mipe Battery Level**: Percentage (0-100%) and voltage (mV)
-- **Mipe Battery Health**: Charge cycles, degradation status, estimated remaining life
-- **Mipe Power Rating**: Battery capacity (mAh), chemistry type, voltage range
-- **Host Power Status**: USB-powered confirmation, input voltage/current
-- **Low Battery Alerts**: Critical battery warnings with thresholds
-- **Power Optimization Status**: Current power saving mode and efficiency metrics
-- **Battery Temperature**: Mipe battery temperature for safety monitoring
+- **Mipe Battery Level**: voltage (mV)
+- **Host Power Status**: USB-powered confirmation, Battery voltage level when powered by battery
 - **Charging Status**: If Mipe supports charging, current charging state
 
 #### Host to MotoApp Data Packet Structure
@@ -292,16 +219,14 @@ Byte 18-19: CRC16 Checksum
 ```
 Standard Packet (20 bytes) +
 Byte 20-21: Turn-around Time (microseconds)
-Byte 22:    Temperature (signed 8-bit, Celsius)
-Byte 23:    Interference Level (0-255)
-Byte 24-27: GPS Coordinates (optional)
-Byte 28-29: Altitude (optional)
-Byte 30-31: Extended CRC
+Byte 22:    Interference Level (0-255)
+Byte 23-24: Extended CRC
 ```
 
 #### MotoApp Data Processing Requirements
+Dedicated Prompt available for MotoApp 
 
-**Real-Time RSSI Processing**
+**Near Real-Time RSSI Processing according to Mipe ad frequency**
 - **Receive Rate**: Handle 100ms interval packets (10 Hz)
 - **Buffer Management**: Maintain rolling buffer of last 300 samples (30 seconds)
 - **Data Validation**: Verify packet integrity, detect missing packets
@@ -350,8 +275,8 @@ Byte 30-31: Extended CRC
 **Measurement Session Flow**
 ```
 1. MotoApp → Host: START_MEASUREMENT command
-2. Host → Mipe: Establish/verify connection
-3. Host: Begin RSSI sampling from Mipe connection
+2. Host → Mipe: Detect MIPE advertising
+3. Host: Begin RSSI sampling from Mipe advertising
 4. Host → MotoApp: Stream RSSI packets at configured rate
 5. MotoApp: Real-time distance calculation and display
 6. MotoApp → Host: STOP_MEASUREMENT command (when needed)
@@ -391,17 +316,14 @@ Byte 30-31: Extended CRC
 ```
 1. Power-On State:
    - Host enters MotoApp discovery mode automatically
-   - LED1 starts flashing (200ms intervals)
    - Begins advertising for MotoApp connection
 
 2. MotoApp Connection Established:
-   - LED1 switches to solid ON
    - Host ready for measurement commands
    - Maintains advertising capability for reconnection
 
 3. MotoApp Disconnection (User initiated or connection lost):
    - Host detects disconnection immediately
-   - LED1 switches from solid to flashing (200ms intervals)
    - Host automatically re-enters MotoApp discovery mode
    - Begins advertising again within 1 second
    - No manual reset or button press required
@@ -410,7 +332,6 @@ Byte 30-31: Extended CRC
    - Host remains in discovery mode indefinitely
    - Ready to accept new MotoApp connection
    - When MotoApp "Connect" button pressed → immediate connection
-   - LED1 returns to solid ON when reconnected
 ```
 
 **MotoApp Behavior - User-Controlled Connection**
@@ -440,19 +361,20 @@ Byte 30-31: Extended CRC
 
 **Mipe Connection Behavior - Host-Controlled**
 ```
-1. Mipe Discovery:
+1. Mipe Discovery/Advertising:
    - Host scans for Mipe devices when measurement needed
-   - LED2 turns ON when Mipe connected
-   - Maintains connection during measurement sessions
 
-2. Mipe Disconnection:
-   - LED2 turns OFF when connection lost
+2. Mipe Connection:
+   - Host connects to Mipe and retrives battery voltage data and delivers other data
+   - Independent of MotoApp connection status
+   - Connection can be toggled by Host continously
+   
+3. Mipe Disconnection:
    - Host can re-establish Mipe connection automatically
    - Independent of MotoApp connection status
 
-3. Power Management:
-   - Mipe can enter sleep mode between measurements
-   - Host re-establishes connection when needed
+4. Power Management:
+   - Mipe will mainting advertising mode according to data parameters
    - Automatic wake-up and reconnection capability
 ```
 
@@ -464,25 +386,11 @@ Byte 30-31: Extended CRC
 - User preferences stored in MotoApp (auto-reconnect settings)
 ```
 
-**LED Behavior During Revolving Connections**
-```
-Host LED1 Pattern:
-- Flashing: Always in discovery mode (ready for MotoApp)
-- Solid: Connected to MotoApp
-- Immediate transition: <1 second from disconnect to discovery mode
-
-Mipe LED1 Pattern:
-- Flashing: Advertising for Host connection
-- Solid: Connected to Host
-- Automatic re-advertising after disconnection
-```
-
 **User Experience Requirements**
 ```
 - Zero Host-side intervention required
 - MotoApp "Connect" button always functional when Host in range
 - Seamless reconnection experience
-- Clear visual feedback via LEDs
 - No complex pairing procedures
 - Robust operation across multiple connect/disconnect cycles
 ```
@@ -498,13 +406,8 @@ Mipe LED1 Pattern:
 2. Pairing Establishment:
    Host → Mipe: PAIR_REQUEST with Host identification
    Mipe → Host: PAIR_ACCEPT with Mipe capabilities and power status
-   Host → Mipe: PAIR_CONFIRM with measurement parameters
+   Host → Mipe: PAIR_CONFIRM 
    Mipe: Stores Host identity for future reconnections
-   
-3. Initial Calibration:
-   Host: Performs baseline RSSI measurements at known distance
-   Mipe: Maintains stable signal during calibration phase
-   Host: Establishes distance calculation baseline
 ```
 
 #### Connection Recovery Protocol
@@ -512,7 +415,7 @@ Mipe LED1 Pattern:
 Distance measurement systems require robust reconnection due to varying transmission distances.
 
 1. Connection Loss Detection:
-   Host: Monitors connection timeout and RSSI fade
+   Host: Monitors connection timeout 
    Mipe: Detects connection loss via supervision timeout
    
 2. Mipe Listening Mode:
@@ -527,40 +430,12 @@ Distance measurement systems require robust reconnection due to varying transmis
    Mipe → Host: RECONNECT_ACK with current status and battery level
    Host → Mipe: RECONNECT_CONFIRM with measurement session parameters
    Connection re-established with previous calibration data intact
-   
-4. Single Ping Response:
-   When Mipe receives RECONNECT_PING:
-   - Immediately responds with RECONNECT_ACK (single response)
-   - Transitions to active connection mode
-   - No repeated responses to avoid power waste
-   - If no RECONNECT_CONFIRM received within 5 seconds, returns to listening mode
 ```
 
 #### Power-Optimized Listening Mode
 ```
 Mipe Listening Mode Specifications:
-- Advertising Interval: 1000ms (vs 100ms during initial pairing)
-- Advertising Duration: 100ms every 1000ms (10% duty cycle)
-- Connection Window: 50ms response window for reconnection pings
-- Power Consumption: <10μA average during listening mode
-- Maximum Listening Duration: 5 minutes before deep sleep
-- Deep Sleep Recovery: Button press or scheduled wake (if implemented)
-```
-
-#### Mipe Power-Optimized Protocol
-```
-1. Session Initiation:
-   Host → Mipe: WAKE_REQUEST (4 bytes)
-   Mipe → Host: WAKE_ACK (2 bytes)
-
-2. Measurement Phase:
-   Host: Controls RSSI sampling timing
-   Mipe: Maintains stable signal, responds to queries only
-   Duration: Minimal (< 1 second per measurement)
-
-3. Session Termination:
-   Host → Mipe: SLEEP_COMMAND (2 bytes)
-   Mipe: Immediate sleep mode (no acknowledgment needed)
+- Advertising Interval:  100ms
 ```
 
 #### GATT Service Structure (Host ↔ MotoApp)
@@ -575,196 +450,15 @@ Primary Service: Mipe Host Control Service
 
 ### RF Configuration Requirements
 
-#### Host RF Parameters (for Mipe communication)
+#### Host and Mipe RF Parameters 
 - **Rx Gain Control**: Fixed setting to eliminate AGC variations (±0.5dB accuracy)
 - **Tx Power Control**: Fixed transmission power for stable signal characteristics
-- **Channel Selection**: Single channel operation to avoid hopping variations
-- **Connection Intervals**: Optimized for measurement accuracy vs power consumption
 
 #### Standard BLE Parameters (for MotoApp communication)
 - **Normal RF settings**: Automatic gain control and standard BLE parameters
 - **GATT Services**: Full service discovery and characteristic operations
 - **Connection Intervals**: Optimized for real-time data streaming
 
-## Test Milestone Tests (TMT) Methodology
-
-### TMT Execution Principles
-1. **Strictly Sequential**: Complete one TMT before starting the next
-2. **Single Task Focus**: One task at a time within each TMT
-3. **Manual Validation**: User conducts all integration tests
-4. **Granular Tasks**: Prevent AI assistant from wandering into multiple improvements
-5. **Flexible Addition**: Can add tasks mid-TMT or revisit completed sections
-
-### TMT Success Criteria
-Each TMT must demonstrate:
-- **Functional Completeness**: All planned features working
-- **Integration Success**: Components communicate correctly
-- **Performance Targets**: Meet accuracy, power, or UX requirements
-- **Stability**: Reliable operation under test conditions
-
-### Bug Fixing and Iteration Process
-1. **Bug Discovery**: During TMT validation testing
-2. **Task Addition**: Add specific bug fix tasks to current TMT
-3. **Focus Shift**: Complete bug fixes before proceeding
-4. **Re-validation**: Repeat TMT test after fixes
-5. **TMT Completion**: Only when all criteria met
-
-## Proposed TMT Structure
-
-### TMT1: MotoApp Foundation
-**Objective**: Build complete MotoApp user interface and functionality (no BLE connectivity)
-
-**Success Criteria**:
-- MotoApp UI fully implemented with all planned screens and elements
-- All buttons, graphs, and status displays functional (with mock data)
-- Connection status indicators implemented (showing disconnected state)
-- Distance measurement display with simulated data visualization
-- Settings and configuration screens operational
-- APK builds and installs successfully on Android 14+
-- Navigation between screens working smoothly
-- User interface meets design requirements
-
-**Key Deliverables**:
-- Complete MotoApp UI implementation
-- Main screen with measurement display and controls
-- Connection status screen with Host device indicators
-- Real-time graph display for distance measurements
-- Settings screen for configuration options
-- Mock data generation for UI testing
-- Professional UI/UX design implementation
-
-**UI Elements to Implement**:
-- **Main Screen**: Distance display, measurement controls, connection status
-- **Connection Screen**: Host device discovery status, connection indicators
-- **Measurement Screen**: Real-time distance graph, measurement history
-- **Settings Screen**: BLE configuration, measurement parameters, calibration options
-- **Status Indicators**: Connection state, battery levels, error messages
-- **Control Buttons**: Start/stop measurement, connect/disconnect, settings access
-
-### TMT2: App-Host BLE Integration
-**Objective**: Establish BLE communication between MotoApp and Host with simulated test data
-
-**Success Criteria**:
-- MotoApp can discover Host device by name "MIPE_HOST_[MAC]"
-- Stable BLE connection establishment and maintenance
-- GATT service discovery and characteristic access working
-- Host streams simulated measurement data to MotoApp
-- Real-time data display in MotoApp graphs and indicators
-- Connection status correctly reflected in UI
-- LED1 on Host correctly shows MotoApp connection status
-- Automatic reconnection working after connection loss
-
-**Key Deliverables**:
-- Host BLE advertising with correct device identification
-- MotoApp BLE Central implementation with Host discovery
-- GATT services implemented on Host (with simulated data)
-- Real-time data streaming from Host to MotoApp
-- Connection management on both Host and MotoApp
-- UI updates with real BLE connection status
-- Error handling for connection failures
-
-**Host Simulated Data**:
-- Distance measurements (1-15 meters with realistic variations)
-- RSSI values (-40 to -80 dBm range)
-- System status (connected, measuring, idle)
-- Battery status simulation
-- Measurement timing data
-
-### TMT3: Mipe Device Integration
-**Objective**: Add Mipe device and establish Host-Mipe communication with battery status monitoring
-
-**Success Criteria**:
-- Host can discover and connect to Mipe device
-- Sequential BLE mode switching (MotoApp → Mipe → MotoApp) operational
-- Basic RSSI measurements between Host and Mipe working
-- Mipe battery status transmission to Host and display in MotoApp
-- Power-optimized protocol implementation functional
-- LED2 correctly indicates Mipe connection status
-- Connection recovery protocol working (listening mode, reconnection ping)
-- Pairing and re-pairing functionality operational
-
-**Key Deliverables**:
-- Mipe BLE peripheral implementation with power optimization
-- Host BLE Central functionality for Mipe communication
-- Sequential communication state machine (Host switches between MotoApp and Mipe)
-- Basic RSSI sampling capability between Host and Mipe
-- Battery status monitoring and transmission from Mipe
-- Connection recovery protocol (listening mode, single ping response)
-- MotoApp display of Mipe connection status and battery level
-
-**Battery Status Integration**:
-- Mipe transmits battery percentage to Host
-- Host forwards battery status to MotoApp via GATT
-- MotoApp displays Mipe battery level in real-time
-- Low battery warnings and notifications
-- Battery status included in connection recovery protocol
-
-### TMT4: Distance Calculation with Real Data
-**Objective**: Implement advanced distance calculation using real RSSI and timing data from Mipe
-
-**Success Criteria**:
-- Multiple distance calculation algorithms implemented and tested
-- Real RSSI data from Host-Mipe communication used (no simulated data)
-- Turn-around time measurement system operational
-- Data clustering and pattern recognition working
-- 10% accuracy achieved at test distances (1m, 3m, 5m, 10m, 15m)
-- Real-time distance calculation with <100ms latency
-- MotoApp displays real calculated distances instead of simulated data
-- Algorithm performance comparison and selection complete
-
-**Key Deliverables**:
-- Replace all simulated data with real measurements from Mipe
-- Multi-modal distance calculation system (RSSI + Turn-around time)
-- Mathematical model library and algorithm iteration framework
-- Real-time distance streaming to MotoApp with confidence intervals
-- Data collection and analysis system for algorithm optimization
-- Performance benchmarking and model selection
-
-**Real Data Integration**:
-- Host collects actual RSSI measurements from Mipe communication
-- Turn-around time measurement from Host request to Mipe response
-- Environmental data collection for compensation algorithms
-- Statistical analysis of real measurement variations
-- Algorithm training and optimization using collected real data
-
-### TMT5: RF Optimization & Turn-Around Time
-**Objective**: Implement RF parameter control and precise timing measurement for enhanced accuracy
-
-**Success Criteria**:
-- Fixed Rx gain control operational (±0.5dB stability)
-- Fixed Tx power control implemented
-- RSSI measurements show improved consistency with real data
-- Turn-around time measurement system operational with sub-millisecond precision
-- Consistent response timing achieved (<1ms variation)
-- RF parameter validation and monitoring working
-- Improved distance calculation accuracy with optimized RF parameters
-
-**Key Deliverables**:
-- RF configuration APIs and control systems
-- RSSI sampling with fixed parameters for consistent measurements
-- Turn-around time measurement system (Host request → Mipe response timing)
-- Response time consistency validation and optimization
-- Combined RSSI + timing data collection and analysis
-- RF parameter monitoring and adjustment system
-
-### TMT6: Power Optimization
-**Objective**: Minimize Mipe power consumption for extended battery life while maintaining accuracy
-
-**Success Criteria**:
-- Mipe sleep/wake cycle optimized for minimal power consumption
-- Power consumption measured and validated using eval board measurement system
-- 30+ day battery life projection achieved and verified
-- Minimal transmission protocol fully implemented and tested
-- Power monitoring and reporting operational in real-time
-- Battery life optimization without compromising measurement accuracy
-
-**Key Deliverables**:
-- Power-optimized Mipe firmware with intelligent sleep/wake management
-- Sleep/wake state management with measurement session coordination
-- Power consumption measurement system using eval board capabilities
-- Battery life projection validation with real usage patterns
-- Optimized communication protocol minimizing Mipe transmissions
-- Real-time power monitoring and battery status reporting
 
 ## Development Guidelines for AI Assistant (Cline)
 
@@ -798,72 +492,4 @@ Each TMT must demonstrate:
 This Master Project Prompt provides the foundation for all development work. Each task should reference this document and align with its principles and objectives.
 
 
-
-#### Connection State Management
-```
-Host Connection States:
-1. DISCONNECTED: No Mipe connection, LED2 off
-2. DISCOVERING: Scanning for Mipe devices, LED2 fast flash (100ms)
-3. PAIRING: Initial pairing in progress, LED2 medium flash (200ms)
-4. CONNECTED: Active connection established, LED2 solid on
-5. MEASURING: Measurement session active, LED2 solid on
-6. RECONNECTING: Attempting reconnection after loss, LED2 slow flash (500ms)
-
-Mipe Connection States:
-1. ADVERTISING: Initial pairing mode, high power advertising
-2. LISTENING: Post-connection loss, low power advertising
-3. CONNECTED: Active connection with Host
-4. MEASURING: Responding to measurement session
-5. DEEP_SLEEP: Power conservation mode, no advertising
-```
-
-#### Error Handling and Recovery
-```
-Connection Timeout Scenarios:
-
-1. Pairing Timeout (30 seconds):
-   Host: Returns to DISCONNECTED state, stops scanning
-   Mipe: Returns to ADVERTISING mode for 2 minutes, then DEEP_SLEEP
-   
-2. Measurement Session Timeout (10 seconds):
-   Host: Aborts session, attempts reconnection
-   Mipe: Returns to LISTENING mode, preserves pairing data
-   
-3. Reconnection Failure (3 attempts):
-   Host: Reports connection lost to MotoApp, stops attempts
-   Mipe: Enters DEEP_SLEEP mode to conserve battery
-   
-4. Battery Low (Mipe <10%):
-   Mipe → Host: LOW_BATTERY_WARNING before entering DEEP_SLEEP
-   Host → MotoApp: Battery status notification
-   
-5. Range Exceeded (RSSI < -80dBm):
-   Host: Warns user via MotoApp, continues attempting connection
-   Mipe: Maintains LISTENING mode until timeout
-```
-
-#### Protocol Packet Structures
-```
-RECONNECT_PING (Host → Mipe):
-- Byte 0: Command ID (0x01)
-- Bytes 1-4: Host Identity (stored during pairing)
-- Byte 5: Sequence Number
-- Byte 6: Checksum
-Total: 7 bytes
-
-RECONNECT_ACK (Mipe → Host):
-- Byte 0: Response ID (0x81)
-- Byte 1: Mipe Status (connected/battery level)
-- Byte 2: Signal Strength Indicator
-- Byte 3: Sequence Number (echo)
-- Byte 4: Checksum
-Total: 5 bytes
-
-RECONNECT_CONFIRM (Host → Mipe):
-- Byte 0: Command ID (0x02)
-- Byte 1: Measurement Parameters
-- Byte 2: Session Timeout
-- Byte 3: Checksum
-Total: 4 bytes
-```
 

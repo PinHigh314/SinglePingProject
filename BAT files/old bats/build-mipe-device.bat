@@ -15,9 +15,9 @@ echo     Example: build-mipe-device.bat tmt3_power_optimized
 echo     Example: build-mipe-device.bat --clean ble_peripheral_test
 echo.
 
-:: Set environment variables for nRF Connect SDK v3.1.0
+:: Set environment variables for external Zephyr SDK
 echo Setting up environment variables...
-set ZEPHYR_BASE=C:\ncs\v3.1.0\zephyr
+set ZEPHYR_BASE=C:\zephyr
 set ZEPHYR_SDK_INSTALL_DIR=C:\ncs\toolchains\b8b84efebd\opt\zephyr-sdk
 set ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
