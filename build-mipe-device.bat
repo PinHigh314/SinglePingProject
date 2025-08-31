@@ -3,7 +3,7 @@ setlocal
 
 echo ========================================
 echo SinglePing Mipe Device Build Script
-echo Using stable cmake/ninja build process
+echo Using west build system with NCS v3.1.0
 echo ========================================
 echo.
 echo Usage: build-mipe-device.bat [options] [description]
@@ -57,33 +57,17 @@ if not exist build\CMakeCache.txt (
     )
 )
 
-:: Configure with CMake
-echo Configuring project with CMake...
+:: Build using west build system
+echo Building project with west build...
 echo Board: nrf54l15dk/nrf54l15/cpuapp
 echo.
 
-echo Running: cmake -B build -G Ninja -DBOARD=nrf54l15dk/nrf54l15/cpuapp
-cmake -B build -G Ninja -DBOARD=nrf54l15dk/nrf54l15/cpuapp
+echo Running: west build --board nrf54l15dk/nrf54l15/cpuapp
+west build --board nrf54l15dk/nrf54l15/cpuapp
 
 if %errorlevel% neq 0 (
     echo.
-    echo CMake configuration failed!
-    pause
-    exit /b 1
-)
-
-echo.
-echo CMake configuration successful!
-echo.
-
-:: Build with Ninja
-echo Building project with Ninja...
-echo Running: ninja -C build
-ninja -C build
-
-if %errorlevel% neq 0 (
-    echo.
-    echo Build failed!
+    echo West build failed!
     pause
     exit /b 1
 )

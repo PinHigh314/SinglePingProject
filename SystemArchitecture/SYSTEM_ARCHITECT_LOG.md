@@ -20,6 +20,73 @@ This log documents all major architectural decisions, module boundaries, interfa
 
 ---
 
+## 2025-08-31: Nordic Connect SDK Environment Configuration & Build System Modernization
+
+**Decision:**
+- Migrated from standalone CMake/Ninja build system to modern west build system integrated with Nordic Connect SDK (NCS) v3.1.0
+- Established proper environment variable configuration for consistent cross-platform development
+- Updated existing build scripts to use the new west build approach while preserving versioning and artifact management features
+
+**Rationale:**
+- **Build System Issues**: The previous CMake/Ninja approach was encountering cross-compiler testing failures where ARM toolchain couldn't create Windows executables for CMake configuration tests
+- **Environment Inconsistency**: Multiple Zephyr installations (standalone `C:\zephyr` and NCS-bundled `C:\ncs\v3.1.0\zephyr`) were causing path conflicts and build failures
+- **Modern Best Practices**: west build system is the standard approach for Zephyr projects and handles cross-compilation setup automatically
+- **NCS Integration**: Using the Zephyr version bundled with NCS v3.1.0 ensures compatibility between SDK, toolchain, and RTOS components
+
+**Environment Configuration Established:**
+```
+ZEPHYR_BASE=C:\ncs\v3.1.0\zephyr
+ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+ZEPHYR_SDK_INSTALL_DIR=C:\ncs\toolchains\b8b84efebd\opt\zephyr-sdk
+PATH=C:\ncs\toolchains\b8b84efebd\opt\bin;%PATH%
+```
+
+**Build System Improvements:**
+1. **Host Device**: Updated to use `west build --board nrf54l15dk/nrf54l15/cpuapp`
+2. **Mipe Device**: Updated to use `west build --board nrf54l15dk/nrf54l15/cpuapp`
+3. **Legacy Scripts**: Preserved existing `build-host-device.bat` and `build-mipe-device.bat` with west build integration
+4. **New Scripts**: Created modern build scripts (`build_host.bat`, `build_mipe.bat`, `build_both_devices.bat`)
+
+**Technical Resolution:**
+- **Removed**: Standalone `C:\zephyr` installation that was causing conflicts
+- **Standardized**: All builds now use NCS v3.1.0 bundled Zephyr (version 4.1.99)
+- **Toolchain**: Zephyr SDK 0.17.0 with GCC 12.2.0 properly configured
+- **west Workspace**: Successfully configured with `west config zephyr.base "C:\ncs\v3.1.0\zephyr"`
+
+**Build Success Metrics:**
+- **Host Device**: ✅ Build successful, BLE connectivity verified with mobile app
+- **Mipe Device**: ✅ Build system ready (pending test)
+- **Cross-Platform**: ✅ Works on Windows with proper environment setup
+- **Dependencies**: ✅ All Zephyr modules properly resolved (nrf, mcuboot, mbedtls, etc.)
+
+**Script Architecture:**
+- **Environment Setup**: Automatic configuration of Nordic SDK variables
+- **Error Handling**: Clear failure reporting and exit codes
+- **Artifact Management**: Automatic copying to `compiled_code/` with timestamped naming
+- **Versioning**: Integration with git revision counting and date-based timestamps
+- **Flexibility**: Support for clean builds (`--clean` flag) and custom descriptions
+
+**Impact:**
+- **Development Workflow**: Simplified build process with single command execution
+- **Environment Consistency**: Eliminated path conflicts and build failures
+- **Maintainability**: Centralized environment configuration in build scripts
+- **Scalability**: Easy to add new devices or build configurations
+- **Legacy Support**: Existing build scripts updated without breaking changes
+
+**Lessons Learned:**
+- **Environment Variables**: Critical for cross-platform embedded development
+- **Toolchain Alignment**: Must use Zephyr version bundled with NCS for compatibility
+- **Build System Choice**: west build system handles cross-compilation complexities automatically
+- **Path Management**: Single source of truth for Zephyr installation prevents conflicts
+
+**Next Steps:**
+- Test Mipe device build with new system
+- Consider adding build verification steps (memory usage, dependency checking)
+- Document environment setup for new developers
+- Evaluate adding CI/CD pipeline integration
+
+---
+
 ## 2025-08-21: Log Maintenance Process
 
 **Decision:** To ensure this log is kept up-to-date, the System Architect (AI) will update it at specific, defined trigger points.

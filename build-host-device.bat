@@ -3,7 +3,7 @@ setlocal
 
 echo ========================================
 echo SinglePing Host Device Build Script
-echo Using stable cmake/ninja build process
+echo Using west build system with NCS v3.1.0
 echo ========================================
 echo.
 echo Usage: build-host-device.bat [options] [description]
@@ -57,33 +57,17 @@ if not exist build\CMakeCache.txt (
     )
 )
 
-:: Configure with CMake
-echo Configuring project with CMake...
+:: Build using west build system
+echo Building project with west build...
 echo Board: nrf54l15dk/nrf54l15/cpuapp
 echo.
 
-echo Running: cmake -B build -G Ninja -DBOARD=nrf54l15dk/nrf54l15/cpuapp
-cmake -B build -G Ninja -DBOARD=nrf54l15dk/nrf54l15/cpuapp
+echo Running: west build --board nrf54l15dk/nrf54l15/cpuapp
+west build --board nrf54l15dk/nrf54l15/cpuapp
 
 if %errorlevel% neq 0 (
     echo.
-    echo CMake configuration failed!
-    pause
-    exit /b 1
-)
-
-echo.
-echo CMake configuration successful!
-echo.
-
-:: Build with Ninja
-echo Building project with Ninja...
-echo Running: ninja -C build
-ninja -C build
-
-if %errorlevel% neq 0 (
-    echo.
-    echo Build failed!
+    echo West build failed!
     pause
     exit /b 1
 )
@@ -95,20 +79,20 @@ echo ========================================
 echo.
 
 :: Display build artifacts
-if exist build\zephyr\zephyr.hex (
+if exist build\host_device\zephyr\zephyr.hex (
     echo Build artifacts:
-    echo   HEX file: %CD%\build\zephyr\zephyr.hex
-    for %%F in (build\zephyr\zephyr.hex) do echo   Size: %%~zF bytes
+    echo   HEX file: %CD%\build\host_device\zephyr\zephyr.hex
+    for %%F in (build\host_device\zephyr\zephyr.hex) do echo   Size: %%~zF bytes
 )
 
-if exist build\zephyr\zephyr.elf (
-    echo   ELF file: %CD%\build\zephyr\zephyr.elf
-    for %%F in (build\zephyr\zephyr.elf) do echo   Size: %%~zF bytes
+if exist build\host_device\zephyr\zephyr.elf (
+    echo   ELF file: %CD%\build\host_device\zephyr\zephyr.elf
+    for %%F in (build\host_device\zephyr\zephyr.elf) do echo   Size: %%~zF bytes
 )
 
 echo.
 echo To flash the device, use:
-echo   nrfjprog --program build\zephyr\zephyr.hex --chiperase --verify -r
+echo   nrfjprog --program build\host_device\zephyr\zephyr.hex --chiperase --verify -r
 echo Or use the nRF Connect Programmer app
 echo.
 
@@ -148,7 +132,7 @@ set output_name=Host_%timestamp%.hex
 :: Copy hex file to compiled_code directory
 echo Copying hex file to compiled_code directory...
 if not exist "%~dp0compiled_code" mkdir "%~dp0compiled_code"
-copy build\zephyr\zephyr.hex "%~dp0compiled_code\%output_name%" >nul
+copy build\host_device\zephyr\zephyr.hex "%~dp0compiled_code\%output_name%" >nul
 
 if %errorlevel% equ 0 (
     echo Hex file copied to: compiled_code\%output_name%
