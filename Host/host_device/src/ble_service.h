@@ -1,74 +1,64 @@
-#ifndef BLE_SERVICE_H_
-#define BLE_SERVICE_H_
+/**
+ * BLE Service Header for Host Device - Simplified Working Version
+ * 
+ * This header provides basic BLE central functionality:
+ * - Scanning for BLE devices
+ * - Connecting to devices
+ * - Basic BLE communication
+ */
 
-#include <zephyr/kernel.h>
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/gatt.h>
+#ifndef BLE_SERVICE_H
+#define BLE_SERVICE_H
 
-/* Custom Service UUIDs */
-#define BT_UUID_CUSTOM_SERVICE_VAL \
-    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef0)
+#include <zephyr/bluetooth/conn.h>
+#include <stdbool.h>
 
-#define BT_UUID_CUSTOM_SERVICE \
-    BT_UUID_DECLARE_128(BT_UUID_CUSTOM_SERVICE_VAL)
-
-/* Measurement Data Characteristic UUID */
-#define BT_UUID_MEASUREMENT_DATA_CHAR_VAL \
-    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef1)
-
-#define BT_UUID_MEASUREMENT_DATA_CHAR \
-    BT_UUID_DECLARE_128(BT_UUID_MEASUREMENT_DATA_CHAR_VAL)
-
-/* Control Command Characteristic UUID */
-#define BT_UUID_CONTROL_COMMAND_CHAR_VAL \
-    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef2)
-
-#define BT_UUID_CONTROL_COMMAND_CHAR \
-    BT_UUID_DECLARE_128(BT_UUID_CONTROL_COMMAND_CHAR_VAL)
-
-/* System Status Characteristic UUID */
-#define BT_UUID_SYSTEM_STATUS_CHAR_VAL \
-    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef3)
-
-#define BT_UUID_SYSTEM_STATUS_CHAR \
-    BT_UUID_DECLARE_128(BT_UUID_SYSTEM_STATUS_CHAR_VAL)
-
-/* Mipe Status Characteristic UUID */
-#define BT_UUID_MIPE_STATUS_CHAR_VAL \
-    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef4)
-
-#define BT_UUID_MIPE_STATUS_CHAR \
-    BT_UUID_DECLARE_128(BT_UUID_MIPE_STATUS_CHAR_VAL)
-
-/* Log Data Characteristic UUID */
-#define BT_UUID_LOG_DATA_CHAR_VAL \
-    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcdef5)
-
-#define BT_UUID_LOG_DATA_CHAR \
-    BT_UUID_DECLARE_128(BT_UUID_LOG_DATA_CHAR_VAL)
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
- * @brief Initialize the BLE custom service.
- *
- * @return 0 on success, or a negative error code on failure.
+ * Initialize BLE service
+ * 
+ * @return 0 on success, negative error code on failure
  */
 int ble_service_init(void);
 
 /**
- * @brief Send measurement data to the connected client.
- *
- * @param data Pointer to the data to send.
- * @param len Length of the data.
- *
- * @return 0 on success, or a negative error code on failure.
+ * Check if connected to a BLE device
+ * 
+ * @return true if connected, false otherwise
  */
-int ble_service_send_measurement_data(const uint8_t *data, uint16_t len);
+bool ble_service_is_connected(void);
 
 /**
- * @brief Set the application connection object.
- *
- * @param conn Connection object.
+ * Get current BLE connection
+ * 
+ * @return Pointer to current connection, or NULL if not connected
  */
-void ble_service_set_app_conn(struct bt_conn *conn);
+struct bt_conn *ble_service_get_connection(void);
 
-#endif /* BLE_SERVICE_H_ */
+/**
+ * Disconnect from current BLE device
+ */
+void ble_service_disconnect(void);
+
+/**
+ * Start scanning for BLE devices
+ * 
+ * @return 0 on success, negative error code on failure
+ */
+int ble_service_start_scan(void);
+
+/**
+ * Stop scanning for BLE devices
+ * 
+ * @return 0 on success, negative error code on failure
+ */
+int ble_service_stop_scan(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* BLE_SERVICE_H */

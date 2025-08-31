@@ -1,0 +1,52 @@
+[33mcommit 3f30d87a114ae0bde3dfa44ff7d03d680d86070c[m
+Author: Michael Pedersen <164549870+PinHigh314@users.noreply.github.com>
+Date:   Thu Aug 28 06:48:23 2025 +0200
+
+    connection working between testhost and testmipe
+
+.vscode/settings.json
+BAT files/build-testhost.bat
+BAT files/build-testmipe-device.bat
+Mipe/mipe_device/CMakeLists.txt
+Mipe/mipe_device/prj.conf
+Mipe/mipe_device/src/battery_monitor.c
+Mipe/mipe_device/src/ble_service.c
+Mipe/mipe_device/src/connection_manager.c
+Mipe/mipe_device/src/main.c
+SystemArchitecture/SYSTEM_ARCHITECT_LOG.md
+TestHost/testhost_device/prj.conf
+TestHost/testhost_device/src/main.c
+TestMipe/CMakeLists.txt
+TestMipe/prj.conf
+TestMipe/src/main.c
+compiled_code/Host_250827_1333.hex
+compiled_code/Mipe_250827_1426.hex
+compiled_code/Mipe_250827_1432.hex
+compiled_code/Mipe_250827_1438.hex
+compiled_code/Mipe_250827_1448.hex
+compiled_code/Mipe_250827_1452.hex
+compiled_code/Mipe_250827_1505.hex
+compiled_code/Mipe_250827_1514.hex
+compiled_code/Mipe_250827_1517.hex
+compiled_code/TestHost_250827_1257.hex
+compiled_code/TestHost_250827_1335.hex
+compiled_code/TestHost_250827_1339.hex
+compiled_code/TestHost_250827_1413.hex
+compiled_code/TestHost_250827_1625.hex
+compiled_code/TestHost_250827_1631.hex
+compiled_code/TestHost_250827_1645.hex
+compiled_code/TestHost_250827_1653.hex
+compiled_code/TestHost_250827_1736.hex
+compiled_code/TestHost_250827_1751.hex
+compiled_code/TestHost_250827_2145.hex
+compiled_code/TestHost_250827_2156.hex
+compiled_code/TestHost_250828_0553.hex
+compiled_code/TestHost_250828_0604.hex
+compiled_code/TestHost_250828_0611.hex
+compiled_code/TestHost_250828_0621.hex
+compiled_code/TestHost_250828_0634.hex
+compiled_code/TestMipe_250827_1541.hex
+compiled_code/TestMipe_250827_1600.hex
+compiled_code/TestMipe_250827_1740.hex
+compiled_code/version_log.md
+read_serial.ps1
