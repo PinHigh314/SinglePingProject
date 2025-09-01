@@ -12,48 +12,10 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/sys/byteorder.h>
-#include <zephyr/drivers/gpio.h>
 
 #include "ble_peripheral.h"
 
 LOG_MODULE_REGISTER(ble_peripheral_v8, LOG_LEVEL_INF);
-
-/* LED3 definition for MIPE_SYNC command verification */
-#define LED3_NODE DT_ALIAS(led3)
-static const struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET(LED3_NODE, gpios);
-static struct k_timer led3_flash_timer;
-
-/* LED3 flash timer handler */
-static void led3_flash_timer_handler(struct k_timer *timer)
-{
-    gpio_pin_set_dt(&led3, 0); /* Turn off LED3 */
-}
-
-/* Flash LED3 for MIPE_SYNC command verification */
-static void flash_led3_sync_indicator(void)
-{
-    /* Check if LED3 device is ready */
-    if (!gpio_is_ready_dt(&led3)) {
-        LOG_WRN("LED3 not ready for sync indication");
-        return;
-    }
-    
-    /* Configure LED3 if not already configured */
-    static bool led3_configured = false;
-    if (!led3_configured) {
-        int ret = gpio_pin_configure_dt(&led3, GPIO_OUTPUT_INACTIVE);
-        if (ret < 0) {
-            LOG_WRN("Failed to configure LED3: %d", ret);
-            return;
-        }
-        k_timer_init(&led3_flash_timer, led3_flash_timer_handler, NULL);
-        led3_configured = true;
-    }
-    
-    /* Flash LED3 for 1000ms */
-    gpio_pin_set_dt(&led3, 1); /* Turn on LED3 */
-    k_timer_start(&led3_flash_timer, K_MSEC(1000), K_NO_WAIT);
-}
 
 /* TMT1 Service UUID: 12345678-1234-5678-1234-56789abcdef0 */
 #define TMT1_SERVICE_UUID BT_UUID_DECLARE_128( \
@@ -379,11 +341,6 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
         LOG_INF("MIPE_SYNC command received - initiating Mipe connection");
         /* Send log message to app */
         ble_peripheral_send_log_data("MIPE_SYNC: Starting Mipe connection");
-        
-        /* Flash LED3 to indicate sync command received */
-        LOG_INF("MIPE_SYNC: Flashing LED3 for visual confirmation");
-        ble_peripheral_send_log_data("MIPE_SYNC: LED3 flash - command received");
-        flash_led3_sync_indicator(); /* Actually flash LED3 for 1000ms */
         
         /* Call the Mipe sync callback if registered */
         if (mipe_sync_cb) {
