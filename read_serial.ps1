@@ -12,6 +12,13 @@ Write-Host ""
 $availablePorts = [System.IO.Ports.SerialPort]::getportnames()
 Write-Host "Available COM ports: $($availablePorts -join ', ')"
 
+# Validate that the COM port is in the correct format
+if ($comPort -notmatch "^COM[0-9]+$") {
+    Write-Host "ERROR: Invalid COM port format: $comPort"
+    Write-Host "COM port must be in format COM1, COM2, etc."
+    exit 1
+}
+
 if ($availablePorts -notcontains $comPort) {
     Write-Host "WARNING: Port $comPort not found in available ports!"
     
