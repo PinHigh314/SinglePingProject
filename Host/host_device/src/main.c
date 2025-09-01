@@ -22,7 +22,7 @@
 #include "ble/ble_peripheral.h"
 #include "ble/ble_central.h"
 
-LOG_MODULE_REGISTER(host_main_v9, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(host_main_v9, LOG_LEVEL_WRN);
 
 /* BLE logging buffer */
 static char ble_log_buffer[128];
@@ -85,30 +85,18 @@ static void led_flash_timer_handler(struct k_timer *timer)
 static void led1_rapid_flash_timer_handler(struct k_timer *timer)
 {
     static bool led1_state = false;
-    static int log_counter = 0;
-    
-    /* Log every 10th call to avoid log spam */
-    if (++log_counter >= 10) {
-        log_counter = 0;
-        log_ble("LED1 Timer: MotoApp=%s, Mipe=%s", 
-                motoapp_connected ? "YES" : "NO",
-                mipe_connected ? "YES" : "NO");
-    }
     
     /* Only flash if both connections are active */
     if (motoapp_connected && mipe_connected) {
         led1_state = !led1_state;
         gpio_pin_set_dt(&led1, led1_state);
     } else {
-    /* Safety: if timer is running but conditions changed, stop it */
-        log_ble("LED1 Timer: Stopping timer - conditions changed!");
+        /* Safety: if timer is running but conditions changed, stop it */
         k_timer_stop(&led1_rapid_flash_timer);
         /* Set LED1 based on current state */
         if (motoapp_connected && !mipe_connected) {
-            log_ble("LED1 Timer: Setting to solid ON (MotoApp only)");
             gpio_pin_set_dt(&led1, 1);  /* Solid ON */
         } else {
-            log_ble("LED1 Timer: Setting to OFF");
             gpio_pin_set_dt(&led1, 0);  /* OFF */
         }
     }
@@ -123,26 +111,17 @@ static void update_led1_state(void)
     /* Small delay to ensure timer is fully stopped */
     k_sleep(K_MSEC(10));
     
-    log_ble("=== LED1 State Update ===");
-    log_ble("  MotoApp connected: %s", motoapp_connected ? "YES" : "NO");
-    log_ble("  Mipe connected: %s", mipe_connected ? "YES" : "NO");
-    log_ble("  Timer running: %s", k_timer_remaining_get(&led1_rapid_flash_timer) > 0 ? "YES" : "NO");
-    
     if (motoapp_connected && mipe_connected) {
         /* Both connected - start rapid flash */
-        log_ble("LED1: Starting rapid flash (dual connection)");
         gpio_pin_set_dt(&led1, 1); /* Ensure LED is on before starting timer */
         k_timer_start(&led1_rapid_flash_timer, K_NO_WAIT, K_MSEC(100));
     } else if (motoapp_connected && !mipe_connected) {
         /* Only MotoApp connected - solid ON */
-        log_ble("LED1: Setting to Solid ON (MotoApp only, Mipe NOT connected)");
         gpio_pin_set_dt(&led1, 1);
     } else {
         /* No MotoApp connection - LED1 off */
-        log_ble("LED1: Setting to OFF (no MotoApp)");
         gpio_pin_set_dt(&led1, 0);
     }
-    log_ble("=== LED1 State Update Complete ===");
 }
 
 static void update_mipe_status(void)

@@ -17,7 +17,7 @@
 
 #include "ble_central.h"
 
-LOG_MODULE_REGISTER(ble_central_real, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(ble_central_real, LOG_LEVEL_WRN);
 
 /* Target device name */
 #define MIPE_DEVICE_NAME "SinglePing Mipe"
@@ -67,16 +67,11 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                         struct net_buf_simple *ad)
 {
-    char addr_str[BT_ADDR_LE_STR_LEN];
-
-    bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
-    LOG_INF("Device found: %s (RSSI %d), type %u", addr_str, rssi, type);
-
-    /* We're only interested in connectable events */
+    /* Only process connectable advertising events */
     if (type != BT_GAP_ADV_TYPE_ADV_IND && 
         type != BT_GAP_ADV_TYPE_ADV_DIRECT_IND &&
         type != BT_GAP_ADV_TYPE_SCAN_RSP) {
-        // return; // Temporarily disable filter to see all packets
+        return; /* Skip non-connectable packets */
     }
 
     struct ad_parse_ctx ctx = {
@@ -84,6 +79,7 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
         .rssi = rssi,
     };
 
+    /* Parse advertising data - will only log if it's a Mipe device */
     bt_data_parse(ad, ad_parse_cb, &ctx);
 }
 
