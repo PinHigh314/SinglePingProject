@@ -449,11 +449,21 @@ static void log_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
 
 int ble_peripheral_send_log_data(const char *log_str)
 {
+    int err;
+    
     if (!current_conn || !log_notify_enabled) {
         return -ENOTCONN;
     }
 
-    return bt_gatt_notify(current_conn, log_char_attr, log_str, strlen(log_str));
+    /* Check if we can send notification without blocking */
+    err = bt_gatt_notify(current_conn, log_char_attr, log_str, strlen(log_str));
+    if (err == -ENOMEM) {
+        /* Buffer full, skip this notification */
+        LOG_DBG("Log notification buffer full, skipping");
+        return -EAGAIN;
+    }
+    
+    return err;
 }
 
 int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
@@ -482,11 +492,15 @@ int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
     rssi_data[0] = (uint8_t)rssi_value;
     sys_put_le24(timestamp & 0xFFFFFF, &rssi_data[1]);
 
-    /* Send notification */
+    /* Send notification with error handling */
     err = bt_gatt_notify(current_conn, rssi_char_attr, 
                         rssi_data, sizeof(rssi_data));
     
-    if (err) {
+    if (err == -ENOMEM) {
+        /* Buffer full, skip this notification */
+        LOG_DBG("RSSI notification buffer full, skipping");
+        return -EAGAIN;
+    } else if (err) {
         LOG_ERR("Failed to send RSSI notification (err %d)", err);
         return err;
     }
@@ -512,8 +526,18 @@ bool ble_peripheral_is_streaming(void)
 
 int ble_peripheral_update_mipe_status(const mipe_status_t *status)
 {
+    static uint32_t last_update_time = 0;
+    uint32_t current_time = k_uptime_get_32();
+    int err;
+    
     if (!current_conn || !mipe_status_notify_enabled) {
         return -ENOTCONN;
+    }
+
+    /* Rate limit status updates to max 1 per second */
+    if ((current_time - last_update_time) < 1000) {
+        LOG_DBG("Mipe status update rate limited, skipping");
+        return -EAGAIN;
     }
 
     memcpy(&mipe_status, status, sizeof(mipe_status_t));
@@ -524,8 +548,8 @@ int ble_peripheral_update_mipe_status(const mipe_status_t *status)
     /* Byte 0: status_flags */
     formatted_data[0] = mipe_status.status_flags;
     
-    /* Byte 1: rssi */
-    formatted_data[1] = (uint8_t)mipe_status.rssi;
+    /* Byte 1: rssi - keep as signed int8_t */
+    formatted_data[1] = (uint8_t)(mipe_status.rssi & 0xFF);
     
     /* Bytes 2-7: device address (placeholder) */
     /* For now, use a placeholder address since we don't have real device address */
@@ -543,8 +567,24 @@ int ble_peripheral_update_mipe_status(const mipe_status_t *status)
     float battery_voltage = mipe_status.battery_voltage;
     memcpy(&formatted_data[12], &battery_voltage, sizeof(float));
 
-    LOG_INF("Sending formatted Mipe status: flags=0x%02x, rssi=%d, batt=%.2fV", 
-            formatted_data[0], formatted_data[1], battery_voltage);
-
-    return bt_gatt_notify(current_conn, mipe_status_char_attr, formatted_data, sizeof(formatted_data));
+    /* Try to send notification with error handling */
+    err = bt_gatt_notify(current_conn, mipe_status_char_attr, formatted_data, sizeof(formatted_data));
+    
+    if (err == -ENOMEM) {
+        /* Buffer full, skip this notification */
+        LOG_DBG("Mipe status notification buffer full, skipping");
+        return -EAGAIN;
+    } else if (err) {
+        LOG_DBG("Failed to send Mipe status notification (err %d)", err);
+        return err;
+    }
+    
+    /* Only log success if notification was actually sent */
+    if (err == 0) {
+        LOG_INF("Sending formatted Mipe status: flags=0x%02x, rssi=%d, batt=%.2fV", 
+                formatted_data[0], (int8_t)formatted_data[1], battery_voltage);
+    }
+    
+    last_update_time = current_time;
+    return 0;
 }

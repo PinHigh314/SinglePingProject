@@ -27,16 +27,31 @@ LOG_MODULE_REGISTER(host_main_v9, LOG_LEVEL_WRN);
 /* BLE logging buffer */
 static char ble_log_buffer[128];
 
+/* Connection states - declare before log_ble function */
+static bool motoapp_connected = false;
+static bool mipe_connected = false;
+static bool streaming_active = false;
+
 /* Helper function to send logs via BLE */
 static void log_ble(const char *format, ...)
 {
     va_list args;
+    int err;
+    
     va_start(args, format);
     vsnprintf(ble_log_buffer, sizeof(ble_log_buffer), format, args);
     va_end(args);
 
     LOG_INF("%s", ble_log_buffer);
-    ble_peripheral_send_log_data(ble_log_buffer);
+    
+    /* Only try to send via BLE if we're connected and ready */
+    if (motoapp_connected) {
+        err = ble_peripheral_send_log_data(ble_log_buffer);
+        if (err == -EAGAIN) {
+            /* Buffer full, just log locally */
+            LOG_DBG("BLE log buffer full, skipping");
+        }
+    }
 }
 
 /* LED definitions */
@@ -49,11 +64,6 @@ static const struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
 static const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(LED2_NODE, gpios);
 static const struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET(LED3_NODE, gpios);
-
-/* Connection states */
-static bool motoapp_connected = false;
-static bool mipe_connected = false;
-static bool streaming_active = false;
 
 /* Timers */
 static struct k_timer heartbeat_timer;
@@ -175,9 +185,12 @@ static void handle_mipe_sync(void)
 /* BLE Peripheral callbacks */
 static void app_connected(void)
 {
-    log_ble("MotoApp connected");
     motoapp_connected = true;
     update_led1_state();
+    
+    /* Wait for connection to stabilize before sending logs */
+    k_sleep(K_MSEC(500));
+    log_ble("MotoApp connected");
 }
 
 static void app_disconnected(void)
@@ -204,7 +217,8 @@ static void streaming_state_changed(bool active)
 /* BLE Central callback */
 static void mipe_rssi_received(int8_t rssi, uint32_t timestamp)
 {
-    log_ble("Mipe RSSI: %d dBm at %u ms", rssi, timestamp);
+    /* Don't log every RSSI update - too frequent */
+    LOG_DBG("Mipe RSSI: %d dBm at %u ms", rssi, timestamp);
     latest_mipe_rssi = rssi;
     latest_mipe_timestamp = timestamp;
     
@@ -228,7 +242,8 @@ static int get_rssi_data(int8_t *rssi, uint32_t *timestamp)
     if (mipe_connected && latest_mipe_timestamp > 0) {
         /* Use actual Mipe RSSI */
         int8_t rssi_to_send = latest_mipe_rssi;
-        log_ble("TX RSSI: %d dBm (from Mipe)", rssi_to_send);
+        /* Don't log every transmission - too frequent at 10Hz */
+        LOG_DBG("TX RSSI: %d dBm (from Mipe)", rssi_to_send);
         
         /* Flash LED2 to indicate RSSI transmission */
         gpio_pin_set_dt(&led2, 1);
@@ -240,7 +255,7 @@ static int get_rssi_data(int8_t *rssi, uint32_t *timestamp)
         return 0;
     } else {
         /* No Mipe beacon detected - don't send any data */
-        log_ble("No Mipe beacon detected - skipping RSSI transmission");
+        LOG_DBG("No Mipe beacon detected - skipping RSSI transmission");
         return -ENODATA;
     }
 }
@@ -366,8 +381,13 @@ int main(void)
 
     /* Main loop */
     while (1) {
-        k_sleep(K_SECONDS(1));
-        update_mipe_status();
+        /* Update Mipe status less frequently to avoid buffer overflow */
+        k_sleep(K_SECONDS(5));  /* Changed from 1 second to 5 seconds */
+        
+        /* Only update status if MotoApp is connected */
+        if (motoapp_connected) {
+            update_mipe_status();
+        }
     }
 
     return 0;
