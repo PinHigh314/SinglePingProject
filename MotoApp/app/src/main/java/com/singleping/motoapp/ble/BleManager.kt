@@ -64,18 +64,33 @@ class HostBleManager(context: Context) : BleManager(context) {
             override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
                 val service = gatt.getService(TMT1_SERVICE_UUID)
                 if (service != null) {
+                    Log.i(TAG, "=== SERVICE DISCOVERY DEBUG ===")
+                    Log.i(TAG, "TMT1 Service found: ${service.uuid}")
+                    
                     rssiDataCharacteristic = service.getCharacteristic(RSSI_DATA_CHAR_UUID)
                     controlCharacteristic = service.getCharacteristic(CONTROL_CHAR_UUID)
                     statusCharacteristic = service.getCharacteristic(STATUS_CHAR_UUID)
                     mipeStatusCharacteristic = service.getCharacteristic(MIPE_STATUS_CHAR_UUID)
                     logDataCharacteristic = service.getCharacteristic(LOG_DATA_CHAR_UUID)
                     
-                    return rssiDataCharacteristic != null && 
+                    Log.i(TAG, "RSSI Data Characteristic: ${if (rssiDataCharacteristic != null) "FOUND" else "MISSING"}")
+                    Log.i(TAG, "Control Characteristic: ${if (controlCharacteristic != null) "FOUND" else "MISSING"}")
+                    Log.i(TAG, "Status Characteristic: ${if (statusCharacteristic != null) "FOUND" else "MISSING"}")
+                    Log.i(TAG, "Mipe Status Characteristic: ${if (mipeStatusCharacteristic != null) "FOUND" else "MISSING"}")
+                    Log.i(TAG, "Log Data Characteristic: ${if (logDataCharacteristic != null) "FOUND" else "MISSING"}")
+                    
+                    val allFound = rssiDataCharacteristic != null && 
                            controlCharacteristic != null && 
                            statusCharacteristic != null &&
                            mipeStatusCharacteristic != null &&
                            logDataCharacteristic != null
+                    
+                    Log.i(TAG, "All characteristics found: $allFound")
+                    Log.i(TAG, "================================")
+                    
+                    return allFound
                 }
+                Log.i(TAG, "TMT1 Service NOT found!")
                 return false
             }
             
@@ -199,15 +214,22 @@ class HostBleManager(context: Context) : BleManager(context) {
      * Start data streaming from the host
      */
     suspend fun startDataStream() {
+        Log.i(TAG, "=== START DATA STREAM DEBUG ===")
+        Log.i(TAG, "Control characteristic: ${if (controlCharacteristic != null) "AVAILABLE" else "NULL"}")
+        
         controlCharacteristic?.let { characteristic ->
             val data = Data(byteArrayOf(CMD_START_STREAM))
+            Log.i(TAG, "Sending START_STREAM command: 0x${CMD_START_STREAM.toString(16)}")
             writeCharacteristic(
                 characteristic,
                 data,
                 BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             ).enqueue()
-            Log.i(TAG, "Start stream command sent")
+            Log.i(TAG, "Start stream command sent successfully")
+        } ?: run {
+            Log.e(TAG, "ERROR: Control characteristic is NULL - cannot send command!")
         }
+        Log.i(TAG, "===============================")
     }
     
     /**
