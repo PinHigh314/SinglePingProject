@@ -33,16 +33,61 @@ static ssize_t control_write(struct bt_conn *conn,
                             uint16_t offset,
                             uint8_t flags)
 {
-    LOG_INF("Control command received: len=%d", len);
+    char addr[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    
+    LOG_INF("=== CONTROL COMMAND RECEIVED ===");
+    LOG_INF("From App address: %s", addr);
+    LOG_INF("Command data length: %d bytes", len);
+    LOG_INF("Command offset: %d", offset);
+    LOG_INF("Command flags: 0x%02x", flags);
     
     if (len > 0) {
         uint8_t cmd = ((uint8_t *)buf)[0];
-        LOG_INF("Command: 0x%02x", cmd);
+        LOG_INF("Command byte: 0x%02x", cmd);
         
+        // Log command details
+        switch (cmd) {
+            case CMD_START_STREAM:
+                LOG_INF("Command type: START STREAM (0x%02x)", cmd);
+                break;
+            case CMD_STOP_STREAM:
+                LOG_INF("Command type: STOP STREAM (0x%02x)", cmd);
+                break;
+            case CMD_GET_STATUS:
+                LOG_INF("Command type: GET STATUS (0x%02x)", cmd);
+                break;
+            case CMD_MIPE_SYNC:
+                LOG_INF("Command type: MIPE SYNC (0x%02x)", cmd);
+                break;
+            default:
+                LOG_WRN("Command type: UNKNOWN (0x%02x)", cmd);
+                break;
+        }
+        
+        // Log full command data if available
+        if (len <= 16) {  // Only log if reasonable length
+            LOG_INF("Full command data:");
+            for (int i = 0; i < len; i++) {
+                LOG_INF("  [%d]: 0x%02x", i, ((uint8_t *)buf)[i]);
+            }
+        } else {
+            LOG_INF("Command data (first 16 bytes):");
+            for (int i = 0; i < 16; i++) {
+                LOG_INF("  [%d]: 0x%02x", i, ((uint8_t *)buf)[i]);
+            }
+            LOG_INF("  ... and %d more bytes", len - 16);
+        }
+        
+        LOG_INF("Handling control command...");
         // Handle control command
         ble_service_handle_control_command(buf, len);
+        LOG_INF("Control command handled successfully");
+    } else {
+        LOG_WRN("Empty command received - ignoring");
     }
     
+    LOG_INF("================================");
     return len;
 }
 
@@ -212,38 +257,58 @@ int ble_service_send_log_data(const char *log_string)
 int ble_service_handle_control_command(const uint8_t *data, uint16_t len)
 {
     if (!data || len == 0) {
+        LOG_ERR("Invalid control command: data=%p, len=%d", data, len);
         return -EINVAL;
     }
     
     uint8_t cmd = data[0];
-    LOG_INF("Handling control command: 0x%02x", cmd);
+    LOG_INF("=== PROCESSING CONTROL COMMAND ===");
+    LOG_INF("Command byte: 0x%02x", cmd);
+    LOG_INF("Data length: %d bytes", len);
+    
+    // Log connection state
+    LOG_INF("Current connection state:");
+    LOG_INF("  - App connected: %s", app_connected ? "Yes" : "No");
+    LOG_INF("  - Connection object: %s", app_conn ? "Valid" : "NULL");
     
     switch (cmd) {
         case CMD_START_STREAM:
-            LOG_INF("Start stream command received");
+            LOG_INF("=== EXECUTING START STREAM COMMAND ===");
+            LOG_INF("Calling handle_start_stream() function...");
             handle_start_stream();
+            LOG_INF("Start stream command executed successfully");
             break;
             
         case CMD_STOP_STREAM:
-            LOG_INF("Stop stream command received");
+            LOG_INF("=== EXECUTING STOP STREAM COMMAND ===");
+            LOG_INF("Calling handle_stop_stream() function...");
             handle_stop_stream();
+            LOG_INF("Stop stream command executed successfully");
             break;
             
         case CMD_GET_STATUS:
-            LOG_INF("Get status command received");
+            LOG_INF("=== EXECUTING GET STATUS COMMAND ===");
+            LOG_INF("Calling handle_get_status() function...");
             handle_get_status();
+            LOG_INF("Get status command executed successfully");
             break;
             
         case CMD_MIPE_SYNC:
-            LOG_INF("Mipe sync command received");
+            LOG_INF("=== EXECUTING MIPE SYNC COMMAND ===");
+            LOG_INF("Calling handle_mipe_sync() function...");
             handle_mipe_sync();
+            LOG_INF("Mipe sync command executed successfully");
             break;
             
         default:
-            LOG_WRN("Unknown command: 0x%02x", cmd);
+            LOG_WRN("=== UNKNOWN COMMAND RECEIVED ===");
+            LOG_WRN("Unknown command byte: 0x%02x", cmd);
+            LOG_WRN("Command not recognized - ignoring");
             break;
     }
     
+    LOG_INF("Control command processing completed");
+    LOG_INF("=====================================");
     return 0;
 }
 

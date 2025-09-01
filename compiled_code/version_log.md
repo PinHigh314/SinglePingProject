@@ -649,3 +649,5 @@ The Host device now provides:
 ## Previous Builds
 01/09/2025  7.07.54,68 - Built: Host_250901_0707.hex 
 01/09/2025  7.09.41,45 - Built: Host_250901_0709.hex 
+01/09/2025  7.32.34,84 - Built: Mipe_250901_0732.hex 
+01/09/2025  7.39.12,80 - Built: Host_250901_0739.hex 

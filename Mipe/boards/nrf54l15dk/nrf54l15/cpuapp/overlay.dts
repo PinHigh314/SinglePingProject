@@ -1,3 +1,5 @@
+/* ADC Device Tree Overlay - DISABLED FOR NOW */
+/*
 / {
     aliases {
         adc0 = &adc0;
@@ -31,7 +33,7 @@
     adc0_sleep: adc0_sleep {
         group1 {
             psels = <NRF_PSEL(ADC_INPUT, 0, 26)>;
-            low-power-enable;
         };
     };
 };
+*/

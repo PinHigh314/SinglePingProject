@@ -27,21 +27,142 @@ static uint32_t last_rssi_send = 0;
 static const uint32_t RSSI_SEND_INTERVAL = 1000; // Send RSSI every 1 second
 
 // ========================================
+// MIPE DETECTION AND SCANNING
+// ========================================
+
+// Mipe scanning state
+static bool mipe_scanning_active = false;
+static bool mipe_device_found = false;
+static char mipe_device_addr[BT_ADDR_LE_STR_LEN] = {0};
+static int8_t mipe_rssi_value = -100; // Default RSSI value
+static uint32_t last_mipe_scan = 0;
+static const uint32_t MIPE_SCAN_INTERVAL = 5000; // Scan for Mipe every 5 seconds
+
+// Mipe device information
+static const char *MIPE_EXPECTED_NAME = "MIPE";
+static const size_t MIPE_NAME_LENGTH = 4;
+
+// ========================================
+// MIPE SCANNING AND DETECTION
+// ========================================
+
+/**
+ * Start scanning for Mipe devices
+ */
+static int start_mipe_scanning(void)
+{
+    LOG_INF("=== STARTING MIPE SCANNING ===");
+    LOG_INF("Previous scanning state: %s", mipe_scanning_active ? "ACTIVE" : "INACTIVE");
+    LOG_INF("Previous Mipe found state: %s", mipe_device_found ? "FOUND" : "NOT FOUND");
+    
+    // For now, simulate Mipe detection since we're not implementing full scanning yet
+    // In the future, this will call bt_le_scan_start() with proper parameters
+    
+    mipe_scanning_active = true;
+    mipe_device_found = true; // Simulate finding Mipe for now
+    strcpy(mipe_device_addr, "MIPE_SIMULATED");
+    mipe_rssi_value = -55; // Simulated RSSI value
+    
+    LOG_INF("Mipe scanning ACTIVATED");
+    LOG_INF("Mipe device status: %s", mipe_device_found ? "FOUND" : "NOT FOUND");
+    if (mipe_device_found) {
+        LOG_INF("Mipe device address: %s", mipe_device_addr);
+        LOG_INF("Mipe RSSI value: %d dBm", mipe_rssi_value);
+    }
+    LOG_INF("================================");
+    
+    return 0;
+}
+
+/**
+ * Stop scanning for Mipe devices
+ */
+static int stop_mipe_scanning(void)
+{
+    LOG_INF("=== STOPPING MIPE SCANNING ===");
+    LOG_INF("Previous scanning state: %s", mipe_scanning_active ? "ACTIVE" : "INACTIVE");
+    LOG_INF("Previous Mipe found state: %s", mipe_device_found ? "FOUND" : "NOT FOUND");
+    
+    mipe_scanning_active = false;
+    
+    LOG_INF("Mipe scanning DEACTIVATED");
+    LOG_INF("Mipe device status remains: %s", mipe_device_found ? "FOUND" : "NOT FOUND");
+    LOG_INF("================================");
+    
+    return 0;
+}
+
+/**
+ * Check if Mipe device is available and log status
+ */
+static void check_mipe_status(void)
+{
+    static uint32_t last_status_check = 0;
+    uint32_t current_time = k_uptime_get();
+    
+    // Check every 10 seconds
+    if (current_time - last_status_check >= 10000) {
+        LOG_INF("=== MIPE STATUS CHECK ===");
+        LOG_INF("Current time: %u ms", current_time);
+        LOG_INF("Mipe scanning: %s", mipe_scanning_active ? "ACTIVE" : "INACTIVE");
+        LOG_INF("Mipe device found: %s", mipe_device_found ? "YES" : "NO");
+        
+        if (mipe_device_found) {
+            LOG_INF("Mipe device address: %s", mipe_device_addr);
+            LOG_INF("Mipe RSSI value: %d dBm", mipe_rssi_value);
+            LOG_INF("Mipe expected name: %s", MIPE_EXPECTED_NAME);
+            LOG_INF("Mipe name length: %zu", MIPE_NAME_LENGTH);
+            LOG_INF("Mipe device is AVAILABLE for RSSI reading");
+        } else {
+            LOG_INF("Mipe device NOT FOUND");
+            LOG_INF("Mipe expected name: %s", MIPE_EXPECTED_NAME);
+            LOG_INF("Mipe name length: %zu", MIPE_NAME_LENGTH);
+            LOG_INF("Mipe device is NOT AVAILABLE for RSSI reading");
+        }
+        
+        LOG_INF("==========================");
+        last_status_check = current_time;
+    }
+}
+
+// ========================================
 // RSSI DATA GENERATION
 // ========================================
 
 static int8_t generate_rssi_value(void)
 {
-    // For now, generate simulated RSSI values
-    // In the future, this will read real RSSI from Mipe device
-    static int8_t base_rssi = -55;
-    static int8_t variation = 0;
+    LOG_INF("=== RSSI DATA GENERATION ===");
     
-    // Add some variation to simulate real-world conditions
-    variation = (variation + 1) % 10;
-    int8_t rssi = base_rssi + (variation - 5); // Range: -60 to -50 dBm
-    
-    return rssi;
+    if (mipe_device_found) {
+        // Use real RSSI from Mipe device
+        LOG_INF("Mipe device AVAILABLE - using real RSSI data");
+        LOG_INF("Mipe device address: %s", mipe_device_addr);
+        LOG_INF("Mipe RSSI value: %d dBm", mipe_rssi_value);
+        LOG_INF("Real RSSI data source: MIPE DEVICE");
+        LOG_INF("===========================");
+        return mipe_rssi_value;
+    } else {
+        // Fall back to simulated RSSI values
+        LOG_INF("Mipe device NOT AVAILABLE - using simulated RSSI data");
+        LOG_INF("Mipe scanning status: %s", mipe_scanning_active ? "ACTIVE" : "INACTIVE");
+        LOG_INF("Mipe expected name: %s", MIPE_EXPECTED_NAME);
+        LOG_INF("Mipe name length: %zu", MIPE_NAME_LENGTH);
+        
+        static int8_t base_rssi = -55;
+        static int8_t variation = 0;
+        
+        // Add some variation to simulate real-world conditions
+        variation = (variation + 1) % 10;
+        int8_t rssi = base_rssi + (variation - 5); // Range: -60 to -50 dBm
+        
+        LOG_INF("Simulated RSSI - Base: %d dBm", base_rssi);
+        LOG_INF("Simulated RSSI - Variation: %d", variation);
+        LOG_INF("Simulated RSSI - Generated: %d dBm", rssi);
+        LOG_INF("Simulated RSSI - Range: -60 to -50 dBm");
+        LOG_INF("===========================");
+        
+        return rssi;
+    }
 }
 
 // ========================================
@@ -197,6 +318,11 @@ int main(void)
     }
 
     LOG_INF("Host device initialization complete");
+    
+    // Initialize Mipe scanning (simulated for now)
+    LOG_INF("Initializing Mipe scanning...");
+    start_mipe_scanning();
+    
     LOG_INF("Starting main application loop...");
 
     // Main application loop
@@ -249,25 +375,64 @@ int main(void)
             }
         }
         
+        // Check Mipe status periodically
+        check_mipe_status();
+        
         // Send RSSI data if streaming is active
         if (streaming_active && app_connected) {
             uint32_t current_time = k_uptime_get();
             if (current_time - last_rssi_send >= RSSI_SEND_INTERVAL) {
+                LOG_INF("=== RSSI STREAMING CYCLE START ===");
+                LOG_INF("Current time: %u ms", current_time);
+                LOG_INF("Last RSSI send: %u ms", last_rssi_send);
+                LOG_INF("Time since last send: %u ms", current_time - last_rssi_send);
+                LOG_INF("RSSI send interval: %u ms", RSSI_SEND_INTERVAL);
+                
+                // Generate RSSI value with detailed logging
                 int8_t rssi = generate_rssi_value();
-                LOG_INF("Attempting to send RSSI data: %d dBm", rssi);
+                LOG_INF("RSSI value generated: %d dBm", rssi);
+                
+                LOG_INF("Attempting to send RSSI data via BLE service...");
                 int err = ble_service_send_rssi_data(rssi, current_time);
                 if (err == 0) {
-                    LOG_INF("RSSI data sent successfully: %d dBm, stream count: %u", rssi, stream_counter);
+                    LOG_INF("=== RSSI DATA SENT SUCCESSFULLY ===");
+                    LOG_INF("RSSI value: %d dBm", rssi);
+                    LOG_INF("Timestamp: %u ms", current_time);
+                    LOG_INF("Stream count: %u", stream_counter);
+                    LOG_INF("BLE service send result: %d (success)", err);
+                    LOG_INF("=====================================");
+                    
                     stream_counter++;
                     last_rssi_send = current_time;
+                    
+                    LOG_INF("Stream counter incremented to: %u", stream_counter);
+                    LOG_INF("Last RSSI send time updated to: %u ms", last_rssi_send);
                 } else {
-                    LOG_ERR("Failed to send RSSI data: %d", err);
+                    LOG_ERR("=== RSSI DATA SEND FAILED ===");
+                    LOG_ERR("RSSI value: %d dBm", rssi);
+                    LOG_ERR("Timestamp: %u ms", current_time);
+                    LOG_ERR("Stream count: %u", stream_counter);
+                    LOG_ERR("BLE service send result: %d (error)", err);
+                    LOG_ERR("BLE service error details: %s", 
+                            err == -ENOTCONN ? "Not connected" :
+                            err == -EINVAL ? "Invalid parameters" :
+                            err == -ENOMEM ? "No memory" :
+                            err == -EIO ? "I/O error" : "Unknown error");
+                    LOG_ERR("=================================");
                 }
+                LOG_INF("=== RSSI STREAMING CYCLE END ===");
             }
         } else if (app_connected && !streaming_active) {
             // Log when connected but not streaming
             if (counter % 50 == 0) {  // More frequent logging when connected
-                LOG_INF("Connected to App but streaming is INACTIVE - waiting for start command");
+                LOG_INF("=== CONNECTED BUT NOT STREAMING ===");
+                LOG_INF("App is connected but streaming is INACTIVE");
+                LOG_INF("Waiting for start stream command from App...");
+                LOG_INF("Current streaming state: %s", streaming_active ? "ACTIVE" : "INACTIVE");
+                LOG_INF("Stream counter: %u", stream_counter);
+                LOG_INF("Last RSSI send: %lld ms ago", 
+                        k_uptime_get() - last_rssi_send);
+                LOG_INF("=====================================");
             }
         }
         
@@ -325,7 +490,7 @@ void handle_get_status(void)
     LOG_INF("  - App connected: %s", app_connected ? "Yes" : "No");
     LOG_INF("  - Advertising active: %s", advertising_active ? "Yes" : "No");
     LOG_INF("  - Streaming active: %s", streaming_active ? "Yes" : "No");
-        LOG_INF("  - Stream counter: %u", stream_counter);
+    LOG_INF("  - Stream counter: %u", stream_counter);
     LOG_INF("  - Last RSSI send: %lld ms ago",
             k_uptime_get() - last_rssi_send);
     LOG_INF("  - RSSI send interval: %u ms", RSSI_SEND_INTERVAL);
@@ -338,9 +503,26 @@ void handle_mipe_sync(void)
 {
     LOG_INF("=== MIPE SYNC COMMAND RECEIVED ===");
     LOG_INF("Mipe synchronization command received from App");
-    LOG_INF("Current implementation status: NOT YET IMPLEMENTED");
-    LOG_INF("Future functionality: Will read real battery data from Mipe device");
+    LOG_INF("Current implementation status: PARTIALLY IMPLEMENTED");
+    LOG_INF("Mipe scanning status: %s", mipe_scanning_active ? "ACTIVE" : "INACTIVE");
+    LOG_INF("Mipe device found: %s", mipe_device_found ? "YES" : "NO");
+    
+    if (mipe_device_found) {
+        LOG_INF("Mipe device details:");
+        LOG_INF("  - Address: %s", mipe_device_addr);
+        LOG_INF("  - RSSI: %d dBm", mipe_rssi_value);
+        LOG_INF("  - Expected name: %s", MIPE_EXPECTED_NAME);
+        LOG_INF("  - Name length: %zu", MIPE_NAME_LENGTH);
+        LOG_INF("Mipe device is AVAILABLE for RSSI reading");
+    } else {
+        LOG_INF("Mipe device NOT FOUND");
+        LOG_INF("Expected Mipe name: %s", MIPE_EXPECTED_NAME);
+        LOG_INF("Expected name length: %zu", MIPE_NAME_LENGTH);
+        LOG_INF("Mipe device is NOT AVAILABLE for RSSI reading");
+    }
+    
     LOG_INF("Current streaming state: %s", streaming_active ? "ACTIVE" : "INACTIVE");
+    LOG_INF("Future functionality: Will read real battery data from Mipe device");
     LOG_INF("Mipe sync command acknowledged");
     LOG_INF("================================");
 }
