@@ -140,9 +140,8 @@ static const struct bt_data sd[] = {
     BT_DATA(BT_DATA_NAME_COMPLETE, "MIPE_HOST_A1B2", 14),
 };
 
-/* Data transmission work and timer */
+/* Data transmission work - no timer needed for real-time */
 static struct k_work tx_work;
-static struct k_timer tx_timer;
 
 static void tx_work_handler(struct k_work *work)
 {
@@ -160,16 +159,11 @@ static void tx_work_handler(struct k_work *work)
         return;
     }
 
-    /* Send the data */
-    err = ble_peripheral_send_rssi_data(rssi, timestamp);
+    /* Send raw RSSI data only */
+    err = ble_peripheral_send_rssi_data(rssi, 0);  /* No timestamp */
     if (err == 0) {
         packet_count++;
     }
-}
-
-static void tx_timer_handler(struct k_timer *timer)
-{
-    k_work_submit(&tx_work);
 }
 
 /* Extended API initialization */
@@ -193,9 +187,8 @@ int ble_peripheral_init(void (*conn_cb)(void), void (*disconn_cb)(void),
     LOG_INF("Mipe status characteristic attribute stored at index 8");
     LOG_INF("Log characteristic attribute stored at index 11");
 
-    /* Initialize work and timer */
+    /* Initialize work (no timer needed for real-time) */
     k_work_init(&tx_work, tx_work_handler);
-    k_timer_init(&tx_timer, tx_timer_handler, NULL);
 
     LOG_INF("BLE Peripheral v8 initialized");
     return 0;
@@ -279,8 +272,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     log_notify_enabled = false;
     streaming_active = false;
     
-    /* Stop transmission timer */
-    k_timer_stop(&tx_timer);
+    /* No timer to stop in real-time mode */
 
     /* Notify application of disconnection */
     if (app_disconnected_cb) {
@@ -311,21 +303,19 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
         rssi_notify_enabled = true;
         streaming_active = true;
         
-        /* Start transmission timer at 10Hz */
-        k_timer_start(&tx_timer, K_NO_WAIT, K_MSEC(100));
+        /* No timer - data will be sent in real-time as received */
         
         if (streaming_state_cb) {
             streaming_state_cb(true);
         }
-        LOG_INF("Data streaming started");
+        LOG_INF("Data streaming started - real-time mode");
         break;
         
     case CMD_STOP_STREAM:
         rssi_notify_enabled = false;
         streaming_active = false;
         
-        /* Stop transmission timer */
-        k_timer_stop(&tx_timer);
+        /* No timer to stop in real-time mode */
         
         if (streaming_state_cb) {
             streaming_state_cb(false);
@@ -384,7 +374,6 @@ static void rssi_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value
     if (!notify_enabled) {
         rssi_notify_enabled = false;
         streaming_active = false;
-        k_timer_stop(&tx_timer);
         
         if (streaming_state_cb) {
             streaming_state_cb(false);
@@ -441,13 +430,26 @@ int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
     }
 
     if (!rssi_notify_enabled) {
-        LOG_DBG("Cannot send RSSI - notifications not enabled");
+        /* Log this at INFO level to make it visible */
+        static uint32_t last_warn = 0;
+        uint32_t now = k_uptime_get_32();
+        if (now - last_warn > 1000) {  /* Log once per second */
+            LOG_INF("RSSI notifications not enabled - waiting for START_STREAM command");
+            LOG_INF("Current state: streaming=%d, notify_enabled=%d", 
+                    streaming_active, rssi_notify_enabled);
+            last_warn = now;
+        }
         return -EACCES;
     }
 
-    /* Build RSSI data packet */
+    /* Build RSSI data packet - App might expect 4-byte format */
+    /* Byte 0: RSSI value (signed) */
+    /* Bytes 1-3: Timestamp (24-bit) */
     rssi_data[0] = (uint8_t)rssi_value;
-    sys_put_le24(timestamp & 0xFFFFFF, &rssi_data[1]);
+    
+    /* For now, send minimal timestamp to maintain compatibility */
+    uint32_t simple_timestamp = k_uptime_get_32() & 0xFFFFFF;
+    sys_put_le24(simple_timestamp, &rssi_data[1]);
 
     /* Send notification with error handling */
     err = bt_gatt_notify(current_conn, rssi_char_attr, 
@@ -462,7 +464,13 @@ int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
         return err;
     }
 
-    LOG_DBG("RSSI notification sent: %d dBm", rssi_value);
+    /* Log every 10th packet to avoid spam */
+    static uint32_t send_count = 0;
+    send_count++;
+    if (send_count % 10 == 0) {
+        LOG_INF("RSSI notification sent #%u: %d dBm (4-byte format)", send_count, rssi_value);
+    }
+    
     return 0;
 }
 

@@ -17,14 +17,23 @@
 
 #include "ble_central.h"
 
-LOG_MODULE_REGISTER(ble_central_real, LOG_LEVEL_WRN);
+LOG_MODULE_REGISTER(ble_central_real, LOG_LEVEL_INF);
 
 /* Target device name */
 #define MIPE_DEVICE_NAME "SinglePing Mipe"
 
+/* Beacon timeout in seconds */
+#define BEACON_TIMEOUT_SEC 10
+
 /* Callback management */
 static mipe_rssi_cb_t mipe_rssi_callback = NULL;
 static bool scanning = false;
+
+/* Mipe tracking */
+static bool mipe_detected = false;
+static uint32_t last_mipe_seen = 0;
+static uint32_t mipe_packet_count = 0;
+static bt_addr_le_t mipe_addr = {0};
 
 /* Context for the data parser */
 struct ad_parse_ctx {
@@ -50,7 +59,23 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
     if (strcmp(name, MIPE_DEVICE_NAME) == 0) {
         char addr_str[BT_ADDR_LE_STR_LEN];
         bt_addr_le_to_str(ctx->addr, addr_str, sizeof(addr_str));
-        LOG_INF("Found Mipe beacon: %s (RSSI %d)", addr_str, ctx->rssi);
+        
+        /* Track Mipe detection */
+        if (!mipe_detected) {
+            LOG_INF("*** SinglePing Mipe DETECTED at %s ***", addr_str);
+            LOG_INF("Connection to Mipe: CONNECTED (Beacon Mode)");
+            mipe_detected = true;
+            bt_addr_le_copy(&mipe_addr, ctx->addr);
+        }
+        
+        /* Update tracking */
+        last_mipe_seen = k_uptime_get_32();
+        mipe_packet_count++;
+        
+        /* Log RSSI updates periodically (every 10 packets) */
+        if (mipe_packet_count % 10 == 0) {
+            LOG_INF("Mipe RSSI Update: %d dBm (packet #%u)", ctx->rssi, mipe_packet_count);
+        }
         
         /* Forward RSSI to callback immediately */
         if (mipe_rssi_callback) {
@@ -67,13 +92,15 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                         struct net_buf_simple *ad)
 {
-    /* Only process connectable advertising events */
-    if (type != BT_GAP_ADV_TYPE_ADV_IND && 
-        type != BT_GAP_ADV_TYPE_ADV_DIRECT_IND &&
-        type != BT_GAP_ADV_TYPE_SCAN_RSP) {
-        return; /* Skip non-connectable packets */
-    }
-
+    /* Accept ALL advertising types including non-connectable beacons */
+    /* This includes:
+     * - BT_GAP_ADV_TYPE_ADV_IND (0x00) - Connectable undirected
+     * - BT_GAP_ADV_TYPE_ADV_DIRECT_IND (0x01) - Connectable directed
+     * - BT_GAP_ADV_TYPE_ADV_SCAN_IND (0x02) - Scannable undirected
+     * - BT_GAP_ADV_TYPE_ADV_NONCONN_IND (0x03) - Non-connectable undirected (BEACONS!)
+     * - BT_GAP_ADV_TYPE_SCAN_RSP (0x04) - Scan response
+     */
+    
     struct ad_parse_ctx ctx = {
         .addr = addr,
         .rssi = rssi,
@@ -81,6 +108,29 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 
     /* Parse advertising data - will only log if it's a Mipe device */
     bt_data_parse(ad, ad_parse_cb, &ctx);
+}
+
+/* Check for beacon timeout */
+static void check_beacon_timeout(void)
+{
+    if (mipe_detected) {
+        uint32_t now = k_uptime_get_32();
+        uint32_t elapsed_ms = now - last_mipe_seen;
+        
+        if (elapsed_ms > (BEACON_TIMEOUT_SEC * 1000)) {
+            char addr_str[BT_ADDR_LE_STR_LEN];
+            bt_addr_le_to_str(&mipe_addr, addr_str, sizeof(addr_str));
+            
+            LOG_WRN("*** SinglePing Mipe LOST (timeout after %u ms) ***", elapsed_ms);
+            LOG_INF("Connection to Mipe: DISCONNECTED");
+            LOG_INF("Last known address: %s, Total packets received: %u", 
+                    addr_str, mipe_packet_count);
+            
+            mipe_detected = false;
+            mipe_packet_count = 0;
+            memset(&mipe_addr, 0, sizeof(mipe_addr));
+        }
+    }
 }
 
 int ble_central_init(mipe_rssi_cb_t rssi_cb)
@@ -112,6 +162,9 @@ int ble_central_start_scan(void)
         .window = BT_GAP_SCAN_FAST_WINDOW,
     };
 
+    LOG_INF("=== Starting scan for SinglePing Mipe ===");
+    LOG_INF("Accepting ALL advertising types (including non-connectable beacons)");
+    
     err = bt_le_scan_start(&scan_param, device_found);
     if (err) {
         LOG_ERR("Failed to start scan: %d", err);
@@ -119,7 +172,7 @@ int ble_central_start_scan(void)
     }
 
     scanning = true;
-    LOG_INF("Started scanning for Mipe device");
+    LOG_INF("Scanning ACTIVE - Looking for: %s", MIPE_DEVICE_NAME);
     return 0;
 }
 
@@ -144,5 +197,19 @@ int ble_central_stop_scan(void)
 
 bool ble_central_is_scanning(void)
 {
+    /* Also check for timeout while we're at it */
+    if (scanning) {
+        check_beacon_timeout();
+    }
     return scanning;
+}
+
+bool ble_central_is_mipe_detected(void)
+{
+    return mipe_detected;
+}
+
+uint32_t ble_central_get_mipe_packet_count(void)
+{
+    return mipe_packet_count;
 }

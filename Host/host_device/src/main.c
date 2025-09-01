@@ -124,42 +124,56 @@ static void streaming_state_changed(bool active)
 /* BLE Central callback */
 static void mipe_rssi_received(int8_t rssi, uint32_t timestamp)
 {
-    /* Don't log every RSSI update - too frequent */
-    LOG_DBG("Mipe RSSI: %d dBm at %u ms", rssi, timestamp);
+    /* Update latest values */
     latest_mipe_rssi = rssi;
     latest_mipe_timestamp = timestamp;
     
-    /* In beacon mode, we're always "connected" for RSSI purposes */
+    /* Track connection state changes */
     if (!mipe_connected) {
         mipe_connected = true;
-        log_ble("Mipe beacon detected - RSSI streaming active");
+        LOG_INF("=== Mipe Connection State Change ===");
+        LOG_INF("Connection to Mipe: CONNECTED");
+        LOG_INF("Initial RSSI: %d dBm", rssi);
+        log_ble("Mipe beacon detected - RSSI: %d dBm", rssi);
         update_mipe_status();
+    }
+    
+    /* Send RSSI to app in real-time if streaming is active */
+    if (streaming_active && motoapp_connected) {
+        int err = ble_peripheral_send_rssi_data(rssi, 0);
+        if (err == 0) {
+            /* Successfully sent - log periodically to avoid spam */
+            static uint32_t last_success_log = 0;
+            static uint32_t send_count = 0;
+            send_count++;
+            if (timestamp - last_success_log > 5000) {
+                LOG_INF("Real-time RSSI streaming: %d dBm (sent %u packets)", rssi, send_count);
+                last_success_log = timestamp;
+            }
+        } else if (err != -EAGAIN) {
+            /* Log errors except buffer full */
+            static uint32_t last_error_log = 0;
+            if (timestamp - last_error_log > 1000) {
+                LOG_WRN("Failed to send RSSI: %d", err);
+                last_error_log = timestamp;
+            }
+        }
+    }
+    
+    /* Log RSSI periodically (every 5 seconds) */
+    static uint32_t last_rssi_log = 0;
+    if (timestamp - last_rssi_log > 5000) {
+        LOG_INF("Mipe RSSI: %d dBm (stable)", rssi);
+        last_rssi_log = timestamp;
     }
 }
 
-/* Data transmission callback */
+/* Data transmission callback - NOT USED in real-time mode */
 static int get_rssi_data(int8_t *rssi, uint32_t *timestamp)
 {
-    if (!streaming_active) {
-        return -ENODATA;
-    }
-    
-    /* Only send data if we have a real RSSI from Mipe */
-    if (mipe_connected && latest_mipe_timestamp > 0) {
-        /* Use actual Mipe RSSI */
-        int8_t rssi_to_send = latest_mipe_rssi;
-        /* Don't log every transmission - too frequent at 10Hz */
-        LOG_DBG("TX RSSI: %d dBm (from Mipe)", rssi_to_send);
-        
-        *rssi = rssi_to_send;
-        *timestamp = k_uptime_get_32();
-        
-        return 0;
-    } else {
-        /* No Mipe beacon detected - don't send any data */
-        LOG_DBG("No Mipe beacon detected - skipping RSSI transmission");
-        return -ENODATA;
-    }
+    /* This callback is no longer used in real-time mode */
+    /* RSSI is sent directly from mipe_rssi_received() */
+    return -ENODATA;
 }
 
 int main(void)
@@ -213,13 +227,31 @@ int main(void)
 
     /* Main loop */
     while (1) {
-        /* Update Mipe status less frequently to avoid buffer overflow */
         k_sleep(K_SECONDS(5));
         
-        /* Only update status if MotoApp is connected */
-        if (motoapp_connected) {
-            update_mipe_status();
+        /* Check Mipe connection state */
+        bool mipe_currently_detected = ble_central_is_mipe_detected();
+        
+        /* Handle disconnection */
+        if (mipe_connected && !mipe_currently_detected) {
+            mipe_connected = false;
+            LOG_WRN("=== Mipe Connection State Change ===");
+            LOG_INF("Connection to Mipe: DISCONNECTED");
+            LOG_INF("Last known RSSI: %d dBm", latest_mipe_rssi);
+            log_ble("Mipe beacon lost - timeout");
+            latest_mipe_rssi = -70;  /* Reset to default */
         }
+        
+        /* Log periodic status if Mipe is connected */
+        if (mipe_connected) {
+            uint32_t packet_count = ble_central_get_mipe_packet_count();
+            uint32_t uptime_sec = k_uptime_get_32() / 1000;
+            LOG_INF("Mipe Status: Connected for %u sec, %u packets received, RSSI: %d dBm", 
+                    uptime_sec, packet_count, latest_mipe_rssi);
+        }
+        
+        /* NOTE: Mipe status is ONLY sent when explicitly requested via MIPE_SYNC command */
+        /* No automatic status updates here */
     }
 
     return 0;

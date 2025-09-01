@@ -41,4 +41,16 @@ int ble_central_stop_scan(void);
  */
 bool ble_central_is_scanning(void);
 
+/**
+ * @brief Check if Mipe device is currently detected
+ * @return true if Mipe beacon is detected, false otherwise
+ */
+bool ble_central_is_mipe_detected(void);
+
+/**
+ * @brief Get the number of packets received from Mipe
+ * @return Number of packets received since detection
+ */
+uint32_t ble_central_get_mipe_packet_count(void);
+
 #endif /* BLE_CENTRAL_H_ */
