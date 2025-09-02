@@ -84,10 +84,10 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     private fun setupBleCallbacks() {
-        // Set up RSSI data callback
-        bleManager.onRssiDataReceived = { rssi, timestamp ->
+        // Set up RSSI data callback - now includes battery values
+        bleManager.onRssiDataReceived = { rssi, hostBatteryMv, mipeBatteryMv ->
             viewModelScope.launch {
-                handleRealRssiData(rssi, timestamp)
+                handleRealRssiData(rssi, hostBatteryMv, mipeBatteryMv)
             }
         }
 
@@ -289,13 +289,38 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         stopLogging()
     }
     
-    private fun handleRealRssiData(rssi: Int, timestamp: Long) {
-        handleRssiData(rssi.toFloat(), timestamp)
+    private fun handleRealRssiData(rssi: Int, hostBatteryMv: Int, mipeBatteryMv: Int) {
+        val timestamp = System.currentTimeMillis()
+        
+        // Update host info with battery voltage
+        _hostInfo.value = _hostInfo.value.copy(
+            signalStrength = rssi.toFloat(),
+            batteryVoltage = hostBatteryMv / 1000f  // Convert mV to V
+        )
+        
+        // Update Mipe battery in status if we have a status object
+        _mipeStatus.value?.let { status ->
+            _mipeStatus.value = status.copy(
+                batteryVoltage = mipeBatteryMv / 1000f  // Convert mV to V
+            )
+        }
+        
+        // Log battery values periodically for debugging
+        if (_streamState.value.packetsReceived % 50 == 0) {  // Every 50 packets
+            Log.i(TAG, "Battery levels - Host: $hostBatteryMv mV, Mipe: $mipeBatteryMv mV")
+        }
+        
+        handleRssiData(rssi.toFloat(), timestamp, hostBatteryMv, mipeBatteryMv)
     }
     
-    private fun handleRssiData(rssiValue: Float, timestamp: Long) {
+    private fun handleRssiData(rssiValue: Float, timestamp: Long, hostBatteryMv: Int = 0, mipeBatteryMv: Int = 0) {
         // Add to history (keep last 300 values - 30 seconds at 100ms)
-        val newRssiData = RssiData(timestamp, rssiValue)
+        val newRssiData = RssiData(
+            timestamp = timestamp, 
+            value = rssiValue,
+            hostBatteryMv = hostBatteryMv,
+            mipeBatteryMv = mipeBatteryMv
+        )
         val updatedHistory = (_rssiHistory.value + newRssiData).takeLast(300)
         _rssiHistory.value = updatedHistory
         
@@ -308,23 +333,30 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         val distance = calculateDistance(rssiValue)
         updateDistanceData(distance)
         
-        // Update host info with current RSSI
+        // Update host info with current RSSI and battery
         _hostInfo.value = _hostInfo.value.copy(
-            signalStrength = rssiValue
+            signalStrength = rssiValue,
+            batteryVoltage = if (hostBatteryMv > 0) hostBatteryMv / 1000f else _hostInfo.value.batteryVoltage
         )
         
         // Log the data if streaming is active
         if (_streamState.value.isStreaming) {
-            logData(rssiValue, distance)
+            logData(rssiValue, distance, hostBatteryMv, mipeBatteryMv)
         }
     }
     
-    private fun logData(rssi: Float, distance: Float) {
+    private fun logData(rssi: Float, distance: Float, hostBatteryMv: Int = 0, mipeBatteryMv: Int = 0) {
         val logEntry = LogData(
             rssi = rssi,
             distance = distance,
-            hostInfo = _hostInfo.value,
-            mipeStatus = _mipeStatus.value
+            hostInfo = _hostInfo.value.copy(
+                batteryVoltage = if (hostBatteryMv > 0) hostBatteryMv / 1000f else _hostInfo.value.batteryVoltage
+            ),
+            mipeStatus = _mipeStatus.value?.copy(
+                batteryVoltage = if (mipeBatteryMv > 0) mipeBatteryMv / 1000f else _mipeStatus.value?.batteryVoltage
+            ),
+            hostBatteryMv = hostBatteryMv,
+            mipeBatteryMv = mipeBatteryMv
         )
         
         // Add to logging data (keep last 1000 samples)

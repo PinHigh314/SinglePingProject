@@ -35,6 +35,7 @@ static uint32_t last_mipe_seen = 0;
 static uint32_t mipe_packet_count = 0;
 static bt_addr_le_t mipe_addr = {0};
 static uint16_t mipe_battery_mv = 0;  /* Battery voltage from advertising */
+static bool battery_initialized = false;  /* Track if battery has been set */
 
 /* Context for the data parser */
 struct ad_parse_ctx {
@@ -76,9 +77,21 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
                 /* Extract battery voltage from manufacturer data */
                 /* Format: [Company ID (2 bytes)] [Battery mV (2 bytes)] */
                 ctx->battery_mv = data->data[2] | (data->data[3] << 8);
-                LOG_INF("Mipe battery: %u mV", 
-                        ctx->battery_mv, data->data[0], data->data[1], 
-                        data->data[2], data->data[3]);
+                
+                /* Store battery value immediately in static variable */
+                /* This ensures we capture battery even if it comes in a different packet than the name */
+                if (ctx->battery_mv > 0) {
+                    mipe_battery_mv = ctx->battery_mv;
+                    battery_initialized = true;
+                    /* LOG_INF("Mipe battery stored directly: %u mV", mipe_battery_mv); */
+                }
+                
+                /* Only log if battery value is different to reduce duplicate logs */
+                static uint16_t last_logged_battery = 0;
+                if (ctx->battery_mv != last_logged_battery) {
+                    /* LOG_INF("Mipe battery updated: %u mV", ctx->battery_mv); */
+                    last_logged_battery = ctx->battery_mv;
+                }
             } else {
                 LOG_DBG("Ignoring manufacturer data from company 0x%04X", company_id);
             }
@@ -122,6 +135,8 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
         if (!mipe_detected) {
             LOG_INF("*** SinglePing Mipe DETECTED at %s ***", addr_str);
             LOG_INF("Connection to Mipe: CONNECTED (Beacon Mode)");
+            LOG_INF("Initial battery: %u mV (initialized: %s)", 
+                    mipe_battery_mv, battery_initialized ? "yes" : "no");
             mipe_detected = true;
             bt_addr_le_copy(&mipe_addr, addr);
         }
@@ -130,12 +145,7 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
         last_mipe_seen = k_uptime_get_32();
         mipe_packet_count++;
         
-        /* Update battery voltage if available */
-        if (ctx.battery_mv > 0) {
-            mipe_battery_mv = ctx.battery_mv;
-        }
-        
-        LOG_INF("Mipe: RSSI=%d dBm", rssi);
+        /* LOG_INF("Mipe: RSSI=%d dBm", rssi); */
         
         /* Forward RSSI to callback immediately */
         if (mipe_rssi_callback) {
@@ -163,6 +173,8 @@ static void check_beacon_timeout(void)
             mipe_detected = false;
             mipe_packet_count = 0;
             memset(&mipe_addr, 0, sizeof(mipe_addr));
+            /* Don't reset battery value on timeout - keep last known value */
+            LOG_INF("Keeping last known battery value: %u mV", mipe_battery_mv);
         }
     }
 }
@@ -250,5 +262,8 @@ uint32_t ble_central_get_mipe_packet_count(void)
 
 uint16_t ble_central_get_mipe_battery_mv(void)
 {
+    /* Debug log to track battery value retrieval */
+    /* LOG_INF("ble_central_get_mipe_battery_mv() called, returning: %u mV (initialized: %s)", 
+            mipe_battery_mv, battery_initialized ? "yes" : "no"); */
     return mipe_battery_mv;
 }

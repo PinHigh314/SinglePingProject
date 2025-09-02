@@ -31,10 +31,28 @@ static bool streaming_active = false;
 /* Latest RSSI from Mipe */
 static int8_t latest_mipe_rssi = -70;
 static uint32_t latest_mipe_timestamp = 0;
+static uint16_t latest_mipe_battery_mv = 0;
 
 /* Mipe status data */
 static mipe_status_t mipe_status = {0};
 static uint16_t mipe_connection_attempts = 0;
+
+/* Host battery monitoring - placeholder constant value */
+uint16_t get_host_battery_mv(void)
+{
+    /* TODO: Implement actual ADC reading for host battery */
+    /* For now, return a constant test value as requested */
+    static uint32_t last_log = 0;
+    uint32_t now = k_uptime_get_32();
+    
+    /* Log periodically for debugging */
+    if (now - last_log > 10000) {  /* Every 10 seconds */
+        LOG_INF("Host battery reading: 7654 mV (constant test value)");
+        last_log = now;
+    }
+    
+    return 7654;  /* 7.654V constant as requested */
+}
 
 /* Helper function to send logs via BLE */
 static void log_ble(const char *format, ...)
@@ -69,7 +87,7 @@ static void update_mipe_status(void)
     temp_status.last_scan_timestamp = k_uptime_get_32();
     temp_status.connection_attempts = mipe_connection_attempts;
 
-    LOG_DBG("Updating mipe status - battery: %.2fV", temp_status.battery_voltage);
+    LOG_DBG("Updating mipe status - battery: %.2fV", (double)temp_status.battery_voltage);
     ble_peripheral_update_mipe_status(&temp_status);
 }
 
@@ -131,15 +149,27 @@ static void mipe_rssi_received(int8_t rssi, uint32_t timestamp)
     /* Track connection state changes */
     if (!mipe_connected) {
         mipe_connected = true;
+        /* Store the battery value on first detection */
+        latest_mipe_battery_mv = ble_central_get_mipe_battery_mv();
         LOG_INF("=== Mipe Connection State Change ===");
         LOG_INF("Connection to Mipe: CONNECTED");
         LOG_INF("Initial RSSI: %d dBm", rssi);
-        log_ble("Mipe beacon detected - RSSI: %d dBm", rssi);
-        update_mipe_status();
+        LOG_INF("Mipe battery: %u mV", latest_mipe_battery_mv);
+        /* Don't send log_ble here - it causes buffer conflicts */
+        /* Don't update status immediately - it causes buffer conflicts during scan */
+        /* Status will be updated on next RSSI packet or via MIPE_SYNC command */
+        
+        /* Skip sending the first RSSI packet to avoid buffer conflicts */
+        return;
     }
     
     /* Send RSSI to app in real-time if streaming is active */
     if (streaming_active && motoapp_connected) {
+        /* Get battery values for logging */
+        uint16_t host_batt = get_host_battery_mv();
+        /* Use the stored battery value instead of calling the function each time */
+        uint16_t mipe_batt = latest_mipe_battery_mv;
+        
         int err = ble_peripheral_send_rssi_data(rssi, 0);
         if (err == 0) {
             /* Successfully sent - log periodically to avoid spam */
@@ -147,14 +177,15 @@ static void mipe_rssi_received(int8_t rssi, uint32_t timestamp)
             static uint32_t send_count = 0;
             send_count++;
             if (timestamp - last_success_log > 5000) {
-                LOG_INF("Real-time RSSI streaming: %d dBm (sent %u packets)", rssi, send_count);
+                LOG_INF("Real-time bundle sent #%u: RSSI=%d dBm, Host=%u mV, Mipe=%u mV", 
+                        send_count, rssi, host_batt, mipe_batt);
                 last_success_log = timestamp;
             }
         } else if (err != -EAGAIN) {
             /* Log errors except buffer full */
             static uint32_t last_error_log = 0;
             if (timestamp - last_error_log > 1000) {
-                LOG_WRN("Failed to send RSSI: %d", err);
+                LOG_WRN("Failed to send RSSI bundle: %d", err);
                 last_error_log = timestamp;
             }
         }
@@ -182,6 +213,7 @@ int main(void)
 
     LOG_INF("=== Host Device Starting (Minimal) ===");
     LOG_INF("Initial mipe_connected state: %s", mipe_connected ? "true" : "false");
+    LOG_INF("Host battery monitoring: Using constant 7654 mV for testing");
 
     /* Initialize Bluetooth */
     err = bt_enable(NULL);
@@ -214,16 +246,10 @@ int main(void)
         return err;
     }
 
-    /* Start scanning for Mipe */
-    err = ble_central_start_scan();
-    if (err) {
-        LOG_ERR("Failed to start scanning: %d", err);
-        /* Continue anyway - scanning can be retried */
-    }
-
+    /* Don't start scanning automatically - wait for app to request streaming */
     LOG_INF("=== Host Device Ready ===");
     LOG_INF("Advertising as: MIPE_HOST_A1B2");
-    LOG_INF("Scanning for: SinglePing Mipe");
+    LOG_INF("Waiting for app to start streaming before scanning for Mipe");
 
     /* Main loop */
     while (1) {

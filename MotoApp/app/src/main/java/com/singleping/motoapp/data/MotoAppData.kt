@@ -19,7 +19,9 @@ data class StreamState(
 
 data class RssiData(
     val timestamp: Long,
-    val value: Float // in dBm
+    val value: Float, // in dBm
+    val hostBatteryMv: Int = 0, // Host battery in millivolts
+    val mipeBatteryMv: Int = 0  // Mipe battery in millivolts
 )
 
 data class DistanceData(
@@ -35,7 +37,8 @@ data class DistanceData(
 data class HostInfo(
     val deviceName: String = "MIPE_HOST_A1B2",
     val batteryLevel: String = "USB Powered",
-    val signalStrength: Float = -45f // dBm
+    val signalStrength: Float = -45f, // dBm
+    val batteryVoltage: Float = 0f // Battery voltage in volts
 )
 
 // Logging data classes
@@ -44,7 +47,9 @@ data class LogData(
     val rssi: Float,
     val distance: Float,
     val hostInfo: HostInfo,
-    val mipeStatus: MipeStatus?
+    val mipeStatus: MipeStatus?,
+    val hostBatteryMv: Int = 0, // Host battery in millivolts
+    val mipeBatteryMv: Int = 0  // Mipe battery in millivolts
 )
 
 data class LogStats(

@@ -14,6 +14,7 @@
 #include <zephyr/sys/byteorder.h>
 
 #include "ble_peripheral.h"
+#include "ble_central.h"
 
 LOG_MODULE_REGISTER(ble_peripheral_v8, LOG_LEVEL_INF);
 
@@ -64,7 +65,7 @@ static void (*mipe_sync_cb)(void) = NULL;
 
 /* Status data */
 static uint8_t host_status[8] = {0}; /* Status response buffer */
-static uint8_t rssi_data[4] = {0};   /* RSSI data packet buffer */
+static uint8_t rssi_data[5] = {0};   /* RSSI data packet buffer - NOW 5 BYTES: host_battery(2) + mipe_battery(2) + rssi(1) */
 static mipe_status_t mipe_status = {0}; /* Mipe status data */
 
 /* Store the RSSI characteristic attribute pointer */
@@ -303,6 +304,18 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
         rssi_notify_enabled = true;
         streaming_active = true;
         
+        /* Start scanning for Mipe when streaming starts */
+        {
+            int scan_err = ble_central_start_scan();
+            if (scan_err) {
+                LOG_ERR("Failed to start scanning for Mipe: %d", scan_err);
+                /* Don't send log notification here - it causes buffer conflicts */
+            } else {
+                LOG_INF("Started scanning for Mipe device");
+                /* Don't send log notification here - it causes buffer conflicts */
+            }
+        }
+        
         /* No timer - data will be sent in real-time as received */
         
         if (streaming_state_cb) {
@@ -314,6 +327,17 @@ static ssize_t control_write(struct bt_conn *conn, const struct bt_gatt_attr *at
     case CMD_STOP_STREAM:
         rssi_notify_enabled = false;
         streaming_active = false;
+        
+        /* Stop scanning for Mipe when streaming stops */
+        {
+            int scan_err = ble_central_stop_scan();
+            if (scan_err) {
+                LOG_ERR("Failed to stop scanning for Mipe: %d", scan_err);
+            } else {
+                LOG_INF("Stopped scanning for Mipe device");
+                /* Don't send log notification here - let the scan stop cleanly */
+            }
+        }
         
         /* No timer to stop in real-time mode */
         
@@ -412,10 +436,16 @@ int ble_peripheral_send_log_data(const char *log_str)
     return err;
 }
 
+/* Forward declaration for getting battery values */
+extern uint16_t ble_central_get_mipe_battery_mv(void);
+extern uint16_t get_host_battery_mv(void);
+
 int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
 {
     struct bt_conn_info info;
     int err;
+    uint16_t host_battery_mv;
+    uint16_t mipe_battery_mv;
     
     if (!current_conn) {
         LOG_WRN("Cannot send RSSI - no connection");
@@ -442,18 +472,30 @@ int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
         return -EACCES;
     }
 
-    /* Build RSSI data packet - App might expect 4-byte format */
-    /* Byte 0: RSSI value (signed) */
-    /* Bytes 1-3: Timestamp (24-bit) */
-    rssi_data[0] = (uint8_t)rssi_value;
+    /* Get battery values */
+    host_battery_mv = get_host_battery_mv();
+    mipe_battery_mv = ble_central_get_mipe_battery_mv();
     
-    /* For now, send minimal timestamp to maintain compatibility */
-    uint32_t simple_timestamp = k_uptime_get_32() & 0xFFFFFF;
-    sys_put_le24(simple_timestamp, &rssi_data[1]);
+    /* Log every bundle sent to the app */
+    LOG_INF("Battery Bundle: Host=%u mV, Mipe=%u mV, RSSI=%d dBm", 
+            host_battery_mv, mipe_battery_mv, rssi_value);
+
+    /* Build RSSI data packet - NEW 5-byte format with battery data */
+    /* Bytes 0-1: Host battery (uint16_t, little-endian) */
+    /* Bytes 2-3: Mipe battery (uint16_t, little-endian) */
+    /* Byte 4: RSSI value (int8_t) */
+    rssi_data[0] = host_battery_mv & 0xFF;
+    rssi_data[1] = (host_battery_mv >> 8) & 0xFF;
+    rssi_data[2] = mipe_battery_mv & 0xFF;
+    rssi_data[3] = (mipe_battery_mv >> 8) & 0xFF;
+    rssi_data[4] = (uint8_t)rssi_value;
+    
+    LOG_DBG("Sending packet: Host[0x%02X%02X] Mipe[0x%02X%02X] RSSI[%d]",
+            rssi_data[1], rssi_data[0], rssi_data[3], rssi_data[2], rssi_value);
 
     /* Send notification with error handling */
     err = bt_gatt_notify(current_conn, rssi_char_attr, 
-                        rssi_data, sizeof(rssi_data));
+                        rssi_data, 5);  /* Now sending 5 bytes instead of 4 */
     
     if (err == -ENOMEM) {
         /* Buffer full, skip this notification */
@@ -462,13 +504,6 @@ int ble_peripheral_send_rssi_data(int8_t rssi_value, uint32_t timestamp)
     } else if (err) {
         LOG_ERR("Failed to send RSSI notification (err %d)", err);
         return err;
-    }
-
-    /* Log every 10th packet to avoid spam */
-    static uint32_t send_count = 0;
-    send_count++;
-    if (send_count % 10 == 0) {
-        LOG_INF("RSSI notification sent #%u: %d dBm (4-byte format)", send_count, rssi_value);
     }
     
     return 0;
@@ -547,7 +582,7 @@ int ble_peripheral_update_mipe_status(const mipe_status_t *status)
     /* Only log success if notification was actually sent */
     if (err == 0) {
         LOG_INF("Sending formatted Mipe status: flags=0x%02x, rssi=%d, batt=%.2fV", 
-                formatted_data[0], (int8_t)formatted_data[1], battery_voltage);
+                formatted_data[0], (int8_t)formatted_data[1], (double)battery_voltage);
     }
     
     last_update_time = current_time;

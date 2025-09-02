@@ -46,8 +46,8 @@ class HostBleManager(context: Context) : BleManager(context) {
     private val _connectionState = MutableStateFlow(false)
     val connectionState: StateFlow<Boolean> = _connectionState.asStateFlow()
     
-    // RSSI data callback
-    var onRssiDataReceived: ((rssi: Int, timestamp: Long) -> Unit)? = null
+    // RSSI data callback - now includes battery values
+    var onRssiDataReceived: ((rssi: Int, hostBatteryMv: Int, mipeBatteryMv: Int) -> Unit)? = null
     var onMipeStatusReceived: ((status: MipeStatus) -> Unit)? = null
     var onLogDataReceived: ((log: String) -> Unit)? = null
     
@@ -123,14 +123,33 @@ class HostBleManager(context: Context) : BleManager(context) {
     }
     
     private fun handleRssiData(data: Data) {
-        if (data.size() >= 4) {
-            val rssiValue = data.getByte(0)?.toInt() ?: 0
-            // Get 24-bit timestamp as Long
-            val timestampInt = data.getIntValue(Data.FORMAT_UINT24_LE, 1) ?: 0
-            val timestamp = timestampInt.toLong()
+        // Check for new 5-byte format first, fall back to old 4-byte format
+        if (data.size() >= 5) {
+            // NEW FORMAT: 5 bytes
+            // Bytes 0-1: Host battery (uint16_t, little-endian)
+            // Bytes 2-3: Mipe battery (uint16_t, little-endian)
+            // Byte 4: RSSI value (int8_t)
             
-            Log.d(TAG, "Received RSSI data: $rssiValue dBm, timestamp: $timestamp")
-            onRssiDataReceived?.invoke(rssiValue, timestamp)
+            val hostBatteryMv = data.getIntValue(Data.FORMAT_UINT16_LE, 0) ?: 0
+            val mipeBatteryMv = data.getIntValue(Data.FORMAT_UINT16_LE, 2) ?: 0
+            val rssiValue = data.getByte(4)?.toInt() ?: 0
+            
+            Log.d(TAG, "Received RSSI bundle: RSSI=$rssiValue dBm, Host=$hostBatteryMv mV, Mipe=$mipeBatteryMv mV")
+            onRssiDataReceived?.invoke(rssiValue, hostBatteryMv, mipeBatteryMv)
+            
+        } else if (data.size() >= 4) {
+            // OLD FORMAT: 4 bytes (fallback for compatibility)
+            // Byte 0: RSSI value (signed)
+            // Bytes 1-3: Timestamp (24-bit)
+            
+            val rssiValue = data.getByte(0)?.toInt() ?: 0
+            val timestampInt = data.getIntValue(Data.FORMAT_UINT24_LE, 1) ?: 0
+            
+            Log.d(TAG, "Received RSSI data (old format): $rssiValue dBm")
+            // Use 0 for battery values when not available
+            onRssiDataReceived?.invoke(rssiValue, 0, 0)
+        } else {
+            Log.w(TAG, "Invalid RSSI data size: ${data.size()} bytes")
         }
     }
 
