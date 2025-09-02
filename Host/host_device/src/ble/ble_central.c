@@ -76,7 +76,7 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
                 /* Extract battery voltage from manufacturer data */
                 /* Format: [Company ID (2 bytes)] [Battery mV (2 bytes)] */
                 ctx->battery_mv = data->data[2] | (data->data[3] << 8);
-                LOG_INF("Mipe battery found: %u mV (raw: 0x%02X 0x%02X 0x%02X 0x%02X)", 
+                LOG_INF("Mipe battery: %u mV", 
                         ctx->battery_mv, data->data[0], data->data[1], 
                         data->data[2], data->data[3]);
             } else {
@@ -135,15 +135,7 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
             mipe_battery_mv = ctx.battery_mv;
         }
         
-        /* Log RSSI and battery updates periodically (every 10 packets) */
-        if (mipe_packet_count % 10 == 0) {
-            if (mipe_battery_mv > 0) {
-                LOG_INF("Mipe Update: RSSI=%d dBm, Battery=%u mV (packet #%u)", 
-                        rssi, mipe_battery_mv, mipe_packet_count);
-            } else {
-                LOG_INF("Mipe RSSI Update: %d dBm (packet #%u)", rssi, mipe_packet_count);
-            }
-        }
+        LOG_INF("Mipe: RSSI=%d dBm", rssi);
         
         /* Forward RSSI to callback immediately */
         if (mipe_rssi_callback) {
