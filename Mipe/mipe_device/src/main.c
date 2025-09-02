@@ -71,10 +71,10 @@ int main(void) {
      */
     button_control_init();
     
-    /* POWER OPTIMIZATION: No battery init at boot!
-     * ADC initialization is deferred until first SW3 press
-     * This keeps boot sequence absolutely minimal
+    /* Initialize battery monitoring for advertising data
+     * Battery voltage will be included in every advertising packet
      */
+    battery_monitor_init();
     
     /* Initialize BLE service and start advertising immediately
      * This is the primary function - advertising for RSSI measurement
@@ -91,10 +91,10 @@ int main(void) {
      */
     
     printk("========================================\n");
-    printk("MIPE DEVICE STARTED - ULTRA MINIMAL BOOT\n");
-    printk("  BLE advertising: ACTIVE\n");
-    printk("  Battery ADC: DEFERRED (SW3 activates)\n");
-    printk("  Boot sequence: MINIMAL\n");
+    printk("MIPE DEVICE STARTED\n");
+    printk("  BLE advertising: ACTIVE with battery data\n");
+    printk("  Battery monitoring: INITIALIZED\n");
+    printk("  SW3 button: Manual battery read\n");
     printk("========================================\n");
 
     /* Main control loop - POWER OPTIMIZED

@@ -53,4 +53,10 @@ bool ble_central_is_mipe_detected(void);
  */
 uint32_t ble_central_get_mipe_packet_count(void);
 
+/**
+ * @brief Get the battery voltage from Mipe's advertising data
+ * @return Battery voltage in millivolts, 0 if not available
+ */
+uint16_t ble_central_get_mipe_battery_mv(void);
+
 #endif /* BLE_CENTRAL_H_ */

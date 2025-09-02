@@ -59,29 +59,14 @@ static uint8_t voltage_to_percentage(uint16_t voltage_mv);
 
 /**
  * Initialize battery monitoring
- * POWER OPTIMIZED: Does nothing at boot, ADC init deferred to first SW3 press
+ * Sets up ADC at boot for battery voltage in advertising
  */
 void battery_monitor_init(void)
 {
-    /* POWER OPTIMIZATION: Skip ALL initialization at boot */
-    /* ADC will be initialized on first SW3 button press */
-    LOG_INF("Battery monitor: DEFERRED INIT (press SW3 to activate)");
-}
-
-/**
- * Initialize ADC on first use (lazy initialization)
- * Called internally when SW3 is first pressed
- */
-static int battery_monitor_init_adc(void)
-{
     int err;
     
-    if (adc_initialized) {
-        return 0;  /* Already initialized */
-    }
-    
     LOG_INF("========================================");
-    LOG_INF("ADC INITIALIZATION (FIRST SW3 PRESS)");
+    LOG_INF("BATTERY MONITOR INITIALIZATION");
     LOG_INF("========================================");
     
     /* Get ADC device */
@@ -90,7 +75,7 @@ static int battery_monitor_init_adc(void)
         LOG_WRN("ADC device not ready, using simulated battery level");
         LOG_WRN("Check device tree configuration for ADC");
         current_battery_level = 85; /* Simulate 85% battery */
-        return -ENODEV;
+        return;
     }
     
     LOG_INF("ADC device is ready for battery monitoring");
@@ -107,33 +92,39 @@ static int battery_monitor_init_adc(void)
         LOG_ERR("ADC channel setup failed with error code: %d", err);
         LOG_ERR("Falling back to simulated battery level");
         current_battery_level = 85; /* Fallback to simulated */
-        return err;
+        return;
     }
     
     LOG_INF("ADC channel configured successfully");
+    
+    /* Take initial battery reading */
+    LOG_INF("Taking initial battery voltage reading...");
+    current_voltage_mv = read_battery_voltage();
+    current_battery_level = voltage_to_percentage(current_voltage_mv);
+    
+    LOG_INF("========================================");
+    LOG_INF("BATTERY MONITOR INITIALIZED");
+    LOG_INF("  Initial voltage: %u mV", current_voltage_mv);
+    LOG_INF("  Battery level: %u%%", current_battery_level);
+    LOG_INF("  Battery data will be included in advertising");
     LOG_INF("========================================");
     
     adc_initialized = true;
-    return 0;
 }
 
 /**
  * Read battery voltage once (on-demand)
- * Power-optimized function to read battery only when requested
+ * Used for SW3 button press and advertising updates
  */
 void battery_monitor_read_once(void)
 {
-    /* Initialize ADC on first use (lazy initialization) */
     if (!adc_initialized) {
-        int err = battery_monitor_init_adc();
-        if (err < 0) {
-            LOG_ERR("Failed to initialize ADC on first use");
-            return;
-        }
+        LOG_WRN("ADC not initialized, cannot read battery");
+        return;
     }
     
     LOG_INF("========================================");
-    LOG_INF("BATTERY READ REQUESTED (SW3 BUTTON)");
+    LOG_INF("BATTERY READ REQUESTED");
     LOG_INF("========================================");
     
     /* Read current battery voltage */
@@ -257,6 +248,11 @@ uint8_t battery_monitor_get_level(void)
  */
 uint16_t battery_monitor_get_voltage_mv(void)
 {
+    /* Update battery reading for advertising */
+    if (adc_initialized) {
+        current_voltage_mv = read_battery_voltage();
+        current_battery_level = voltage_to_percentage(current_voltage_mv);
+    }
     return current_voltage_mv;
 }
 

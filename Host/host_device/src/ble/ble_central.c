@@ -34,58 +34,60 @@ static bool mipe_detected = false;
 static uint32_t last_mipe_seen = 0;
 static uint32_t mipe_packet_count = 0;
 static bt_addr_le_t mipe_addr = {0};
+static uint16_t mipe_battery_mv = 0;  /* Battery voltage from advertising */
 
 /* Context for the data parser */
 struct ad_parse_ctx {
     const bt_addr_le_t *addr;
     int8_t rssi;
+    bool found_mipe;
+    uint16_t battery_mv;
 };
 
 /* Data parsing callback */
 static bool ad_parse_cb(struct bt_data *data, void *user_data)
 {
     struct ad_parse_ctx *ctx = user_data;
-    char name[32];
-    uint8_t name_len;
-
-    if (data->type != BT_DATA_NAME_COMPLETE && data->type != BT_DATA_NAME_SHORTENED) {
-        return true; /* Continue parsing */
+    
+    /* Debug log all data types received */
+    LOG_DBG("AD data type: 0x%02X, len: %u", data->type, data->data_len);
+    
+    /* Check for device name */
+    if (data->type == BT_DATA_NAME_COMPLETE || data->type == BT_DATA_NAME_SHORTENED) {
+        char name[32];
+        uint8_t name_len;
+        
+        name_len = MIN(data->data_len, sizeof(name) - 1);
+        memcpy(name, data->data, name_len);
+        name[name_len] = '\0';
+        
+        if (strcmp(name, MIPE_DEVICE_NAME) == 0) {
+            ctx->found_mipe = true;
+            LOG_DBG("Found Mipe device: %s", name);
+        }
     }
-
-    name_len = MIN(data->data_len, sizeof(name) - 1);
-    memcpy(name, data->data, name_len);
-    name[name_len] = '\0';
-
-    if (strcmp(name, MIPE_DEVICE_NAME) == 0) {
-        char addr_str[BT_ADDR_LE_STR_LEN];
-        bt_addr_le_to_str(ctx->addr, addr_str, sizeof(addr_str));
-        
-        /* Track Mipe detection */
-        if (!mipe_detected) {
-            LOG_INF("*** SinglePing Mipe DETECTED at %s ***", addr_str);
-            LOG_INF("Connection to Mipe: CONNECTED (Beacon Mode)");
-            mipe_detected = true;
-            bt_addr_le_copy(&mipe_addr, ctx->addr);
+    /* Check for manufacturer data (contains battery voltage) */
+    else if (data->type == BT_DATA_MANUFACTURER_DATA) {
+        LOG_DBG("Manufacturer data found, len: %u", data->data_len);
+        if (data->data_len >= 4) {
+            /* Only process our company ID (0xFFFF) */
+            uint16_t company_id = data->data[0] | (data->data[1] << 8);
+            if (company_id == 0xFFFF) {
+                /* Extract battery voltage from manufacturer data */
+                /* Format: [Company ID (2 bytes)] [Battery mV (2 bytes)] */
+                ctx->battery_mv = data->data[2] | (data->data[3] << 8);
+                LOG_INF("Mipe battery found: %u mV (raw: 0x%02X 0x%02X 0x%02X 0x%02X)", 
+                        ctx->battery_mv, data->data[0], data->data[1], 
+                        data->data[2], data->data[3]);
+            } else {
+                LOG_DBG("Ignoring manufacturer data from company 0x%04X", company_id);
+            }
+        } else {
+            LOG_DBG("Manufacturer data too short: %u bytes", data->data_len);
         }
-        
-        /* Update tracking */
-        last_mipe_seen = k_uptime_get_32();
-        mipe_packet_count++;
-        
-        /* Log RSSI updates periodically (every 10 packets) */
-        if (mipe_packet_count % 10 == 0) {
-            LOG_INF("Mipe RSSI Update: %d dBm (packet #%u)", ctx->rssi, mipe_packet_count);
-        }
-        
-        /* Forward RSSI to callback immediately */
-        if (mipe_rssi_callback) {
-            mipe_rssi_callback(ctx->rssi, k_uptime_get_32());
-        }
-        
-        return false; /* Stop parsing */
     }
-
-    return true; /* Continue parsing */
+    
+    return true; /* Continue parsing to get all data */
 }
 
 /* Scan callback */
@@ -104,10 +106,50 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
     struct ad_parse_ctx ctx = {
         .addr = addr,
         .rssi = rssi,
+        .found_mipe = false,
+        .battery_mv = 0,
     };
 
-    /* Parse advertising data - will only log if it's a Mipe device */
+    /* Parse advertising data */
     bt_data_parse(ad, ad_parse_cb, &ctx);
+    
+    /* Process if this is a Mipe device */
+    if (ctx.found_mipe) {
+        char addr_str[BT_ADDR_LE_STR_LEN];
+        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+        
+        /* Track Mipe detection */
+        if (!mipe_detected) {
+            LOG_INF("*** SinglePing Mipe DETECTED at %s ***", addr_str);
+            LOG_INF("Connection to Mipe: CONNECTED (Beacon Mode)");
+            mipe_detected = true;
+            bt_addr_le_copy(&mipe_addr, addr);
+        }
+        
+        /* Update tracking */
+        last_mipe_seen = k_uptime_get_32();
+        mipe_packet_count++;
+        
+        /* Update battery voltage if available */
+        if (ctx.battery_mv > 0) {
+            mipe_battery_mv = ctx.battery_mv;
+        }
+        
+        /* Log RSSI and battery updates periodically (every 10 packets) */
+        if (mipe_packet_count % 10 == 0) {
+            if (mipe_battery_mv > 0) {
+                LOG_INF("Mipe Update: RSSI=%d dBm, Battery=%u mV (packet #%u)", 
+                        rssi, mipe_battery_mv, mipe_packet_count);
+            } else {
+                LOG_INF("Mipe RSSI Update: %d dBm (packet #%u)", rssi, mipe_packet_count);
+            }
+        }
+        
+        /* Forward RSSI to callback immediately */
+        if (mipe_rssi_callback) {
+            mipe_rssi_callback(rssi, k_uptime_get_32());
+        }
+    }
 }
 
 /* Check for beacon timeout */
@@ -212,4 +254,9 @@ bool ble_central_is_mipe_detected(void)
 uint32_t ble_central_get_mipe_packet_count(void)
 {
     return mipe_packet_count;
+}
+
+uint16_t ble_central_get_mipe_battery_mv(void)
+{
+    return mipe_battery_mv;
 }

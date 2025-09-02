@@ -59,11 +59,18 @@ BT_GATT_SERVICE_DEFINE(mipe_service,
                BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 );
 
-/* Advertising data */
-static const struct bt_data ad[] = {
+/* Advertising data - will be updated dynamically with battery voltage */
+static struct bt_data ad[3] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
     BT_DATA_BYTES(BT_DATA_UUID128_ALL,
                   BT_UUID_128_ENCODE(0x87654321, 0x4321, 0x8765, 0x4321, 0x987654321098)),
+    /* Third element will be manufacturer data with battery voltage */
+};
+
+/* Buffer for manufacturer data (company ID + battery voltage) */
+static uint8_t mfg_data[4] = {
+    0xFF, 0xFF,  /* Company ID (0xFFFF for testing) */
+    0x00, 0x00   /* Battery voltage in mV (will be updated) */
 };
 
 /* Scan response data with device name */
@@ -77,6 +84,23 @@ static struct bt_le_adv_param adv_param = BT_LE_ADV_PARAM_INIT(
     BT_GAP_ADV_FAST_INT_MIN_2,  /* 100ms */
     BT_GAP_ADV_FAST_INT_MAX_2,  /* 150ms */
     NULL);
+
+/* Helper function to update advertising data with battery voltage */
+static void update_advertising_data(void)
+{
+    uint16_t battery_mv = battery_monitor_get_voltage_mv();
+    
+    /* Update manufacturer data with battery voltage */
+    mfg_data[2] = battery_mv & 0xFF;           /* Low byte */
+    mfg_data[3] = (battery_mv >> 8) & 0xFF;    /* High byte */
+    
+    /* Update the advertising data array */
+    ad[2] = (struct bt_data)BT_DATA(BT_DATA_MANUFACTURER_DATA, mfg_data, sizeof(mfg_data));
+    
+    /* Enhanced debug logging */
+    LOG_INF("Battery in advertising: %u mV (0x%02X 0x%02X 0x%02X 0x%02X)", 
+            battery_mv, mfg_data[0], mfg_data[1], mfg_data[2], mfg_data[3]);
+}
 
 void ble_service_init(void)
 {
@@ -101,6 +125,9 @@ void ble_service_init(void)
         LOG_WRN("Maximum TX power not configured - using default");
     #endif
 
+    /* Update advertising data with current battery voltage */
+    update_advertising_data();
+
     /* Start advertising - using Host's proven method */
     err = bt_le_adv_start(&adv_param,
                          ad, ARRAY_SIZE(ad),
@@ -111,7 +138,8 @@ void ble_service_init(void)
         return;
     }
 
-    LOG_INF("Advertising started - Device name: MIPE");
+    LOG_INF("Advertising started - Device name: SinglePing Mipe");
+    LOG_INF("Battery voltage in advertising: %u mV", battery_monitor_get_voltage_mv());
     /* Fix: Use LED1 for advertising, not LED3 */
     led_set_pattern(LED_ID_PAIRING, LED_PATTERN_ADVERTISING);
 }
@@ -161,6 +189,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     /* Small delay for clean transition */
     k_msleep(100);
 
+    /* Update advertising data with current battery voltage */
+    update_advertising_data();
+
     /* Restart advertising */
     int err = bt_le_adv_start(&adv_param,
                               ad, ARRAY_SIZE(ad),
@@ -169,7 +200,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         LOG_ERR("Failed to restart advertising (err %d)", err);
         led_set_pattern(LED_ID_ERROR, LED_PATTERN_ERROR);
     } else {
-        LOG_INF("Advertising restarted");
+        LOG_INF("Advertising restarted with battery: %u mV", battery_monitor_get_voltage_mv());
         led_set_pattern(LED_ID_PAIRING, LED_PATTERN_ADVERTISING);
     }
 }
@@ -222,12 +253,34 @@ int ble_service_notify_battery(void)
 void ble_service_update(void)
 {
     static uint32_t last_battery_update = 0;
+    static uint32_t last_adv_update = 0;
     uint32_t now = k_uptime_get_32();
     
-    /* Update battery every 60 seconds */
+    /* Update battery notifications every 60 seconds when connected */
     if (current_conn && (now - last_battery_update) > 60000) {
         ble_service_notify_battery();
         last_battery_update = now;
+    }
+    
+    /* Update advertising data with battery every 30 seconds when not connected */
+    if (!current_conn && (now - last_adv_update) > 30000) {
+        /* Stop advertising */
+        bt_le_adv_stop();
+        
+        /* Update with fresh battery data */
+        update_advertising_data();
+        
+        /* Restart advertising with updated data */
+        int err = bt_le_adv_start(&adv_param,
+                                  ad, ARRAY_SIZE(ad),
+                                  sd, ARRAY_SIZE(sd));
+        if (err) {
+            LOG_ERR("Failed to update advertising (err %d)", err);
+        } else {
+            LOG_DBG("Advertising updated with battery: %u mV", battery_monitor_get_voltage_mv());
+        }
+        
+        last_adv_update = now;
     }
 }
 
