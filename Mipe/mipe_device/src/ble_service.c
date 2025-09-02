@@ -78,11 +78,11 @@ static const struct bt_data sd[] = {
     BT_DATA(BT_DATA_NAME_COMPLETE, "SinglePing Mipe", 15),
 };
 
-/* Advertising parameters - using Host's proven approach */
+/* Advertising parameters - slowed down to 500ms for power saving */
 static struct bt_le_adv_param adv_param = BT_LE_ADV_PARAM_INIT(
     BT_LE_ADV_OPT_CONN,
-    BT_GAP_ADV_FAST_INT_MIN_2,  /* 100ms */
-    BT_GAP_ADV_FAST_INT_MAX_2,  /* 150ms */
+    BT_GAP_ADV_SLOW_INT_MIN,  /* 1000ms */
+    BT_GAP_ADV_SLOW_INT_MAX,  /* 1250ms */
     NULL);
 
 /* Helper function to update advertising data with battery voltage */

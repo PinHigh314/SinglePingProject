@@ -67,8 +67,8 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
         }
     }
     /* Check for manufacturer data (contains battery voltage) */
+    /* Parse it regardless of whether we've found Mipe name yet, as it might come before the name */
     else if (data->type == BT_DATA_MANUFACTURER_DATA) {
-        LOG_DBG("Manufacturer data found, len: %u", data->data_len);
         if (data->data_len >= 4) {
             /* Only process our company ID (0xFFFF) */
             uint16_t company_id = data->data[0] | (data->data[1] << 8);
@@ -76,14 +76,9 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data)
                 /* Extract battery voltage from manufacturer data */
                 /* Format: [Company ID (2 bytes)] [Battery mV (2 bytes)] */
                 ctx->battery_mv = data->data[2] | (data->data[3] << 8);
-                LOG_INF("Mipe battery found: %u mV (raw: 0x%02X 0x%02X 0x%02X 0x%02X)", 
-                        ctx->battery_mv, data->data[0], data->data[1], 
-                        data->data[2], data->data[3]);
-            } else {
-                LOG_DBG("Ignoring manufacturer data from company 0x%04X", company_id);
+                LOG_DBG("Battery data found: %u mV (company: 0x%04X)", 
+                        ctx->battery_mv, company_id);
             }
-        } else {
-            LOG_DBG("Manufacturer data too short: %u bytes", data->data_len);
         }
     }
     
@@ -135,14 +130,15 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
             mipe_battery_mv = ctx.battery_mv;
         }
         
-        /* Log RSSI and battery updates periodically (every 10 packets) */
-        if (mipe_packet_count % 10 == 0) {
-            if (mipe_battery_mv > 0) {
-                LOG_INF("Mipe Update: RSSI=%d dBm, Battery=%u mV (packet #%u)", 
-                        rssi, mipe_battery_mv, mipe_packet_count);
-            } else {
-                LOG_INF("Mipe RSSI Update: %d dBm (packet #%u)", rssi, mipe_packet_count);
-            }
+        /* Log RSSI and battery together for every packet */
+        /* Use ctx.battery_mv for current packet, or mipe_battery_mv for last known value */
+        uint16_t battery_to_log = (ctx.battery_mv > 0) ? ctx.battery_mv : mipe_battery_mv;
+        if (battery_to_log > 0) {
+            LOG_INF("Mipe: RSSI=%d dBm, Battery=%u mV (packet #%u)", 
+                    rssi, battery_to_log, mipe_packet_count);
+        } else {
+            LOG_INF("Mipe: RSSI=%d dBm, Battery=N/A (packet #%u)", 
+                    rssi, mipe_packet_count);
         }
         
         /* Forward RSSI to callback immediately */
