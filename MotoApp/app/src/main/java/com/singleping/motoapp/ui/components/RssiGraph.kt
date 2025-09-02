@@ -39,12 +39,15 @@ fun RssiGraph(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            Text("-20", fontSize = 10.sp, color = Color.Gray)
             Text("-30", fontSize = 10.sp, color = Color.Gray)
             Text("-40", fontSize = 10.sp, color = Color.Gray)
             Text("-50", fontSize = 10.sp, color = Color.Gray)
             Text("-60", fontSize = 10.sp, color = Color.Gray)
             Text("-70", fontSize = 10.sp, color = Color.Gray)
             Text("-80", fontSize = 10.sp, color = Color.Gray)
+            Text("-90", fontSize = 10.sp, color = Color.Gray)
+            Text("-100", fontSize = 10.sp, color = Color.Gray)
         }
         
         // Graph canvas
@@ -78,8 +81,8 @@ private fun DrawScope.drawRssiGraph(rssiHistory: List<RssiData>) {
     val gridStroke = Stroke(width = 1.dp.toPx())
     
     // Horizontal grid lines (RSSI values)
-    for (i in 0..5) {
-        val y = height * i / 5
+    for (i in 0..8) {
+        val y = height * i / 8
         drawLine(
             color = gridColor,
             start = Offset(0f, y),
@@ -102,8 +105,8 @@ private fun DrawScope.drawRssiGraph(rssiHistory: List<RssiData>) {
     // Draw RSSI line
     if (rssiHistory.size > 1) {
         val path = Path()
-        val minRssi = -80f
-        val maxRssi = -30f
+        val minRssi = -100f
+        val maxRssi = -20f
         val rssiRange = maxRssi - minRssi
         
         rssiHistory.forEachIndexed { index, rssiData ->

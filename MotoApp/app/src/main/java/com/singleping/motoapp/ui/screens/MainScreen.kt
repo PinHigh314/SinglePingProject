@@ -122,7 +122,7 @@ fun MainScreen(
         LoggingBanner(
             logStats = logStats,
             onViewLogs = onViewLogs,
-            onExportData = { /* TODO: Implement export functionality */ }
+            onExportData = { viewModel.exportToGoogleDrive() }
         )
 
         // 5. Host Status Section
@@ -338,7 +338,7 @@ fun LoggingBanner(
                     ),
                     enabled = logStats.totalSamples > 0
                 ) {
-                    Text("💾 Export")
+                    Text("Export to Drive")
                 }
             }
         }

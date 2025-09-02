@@ -94,6 +94,13 @@ void ble_service_init(void)
 
     LOG_INF("Bluetooth initialized");
 
+    /* Set TX power to maximum (+8 dBm) for better RSSI readings */
+    #if defined(CONFIG_BT_CTLR_TX_PWR_PLUS_8)
+        LOG_INF("TX Power set to maximum (+8 dBm) for optimal RSSI measurements");
+    #else
+        LOG_WRN("Maximum TX power not configured - using default");
+    #endif
+
     /* Start advertising - using Host's proven method */
     err = bt_le_adv_start(&adv_param,
                          ad, ARRAY_SIZE(ad),

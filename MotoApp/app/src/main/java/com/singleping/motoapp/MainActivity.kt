@@ -55,6 +55,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Initialize the data exporter for Google Drive
+        viewModel.initializeExporter(this)
+        
         // Check and request BLE permissions
         checkAndRequestPermissions()
         

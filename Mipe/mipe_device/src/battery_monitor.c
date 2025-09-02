@@ -16,16 +16,16 @@
 LOG_MODULE_REGISTER(battery_monitor, LOG_LEVEL_INF);
 
 /* Battery voltage thresholds (in millivolts) */
-#define BATTERY_VOLTAGE_MAX_MV     3000  /* 3.0V - Full battery */
-#define BATTERY_VOLTAGE_MIN_MV     2000  /* 2.0V - Empty battery */
-#define BATTERY_VOLTAGE_LOW_MV     2200  /* 2.2V - Low battery warning */
-#define BATTERY_VOLTAGE_CRITICAL_MV 2100  /* 2.1V - Critical battery */
+#define BATTERY_VOLTAGE_MAX_MV     3300  /* 3.3V - Full battery */
+#define BATTERY_VOLTAGE_MIN_MV     2200  /* 2.2V - Empty battery */
+#define BATTERY_VOLTAGE_LOW_MV     2500  /* 2.5V - Low battery warning */
+#define BATTERY_VOLTAGE_CRITICAL_MV 2300  /* 2.3V - Critical battery */
 
 /* ADC configuration for battery measurement */
 #define ADC_NODE           DT_NODELABEL(adc)
 #define ADC_RESOLUTION     12
 #define ADC_GAIN           ADC_GAIN_1_4
-#define ADC_REFERENCE      ADC_REF_VDD_1_4
+#define ADC_REFERENCE      ADC_REF_INTERNAL
 #define ADC_ACQUISITION_TIME ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40)
 #define ADC_CHANNEL_ID     0
 
@@ -36,12 +36,13 @@ static bool low_battery_warning_sent = false;
 static bool critical_battery_warning_sent = false;
 
 /* ADC device and configuration */
-static const struct device *adc_dev = NULL;
+static const struct device *adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc));
 static struct adc_channel_cfg channel_cfg = {
     .gain = ADC_GAIN,
     .reference = ADC_REFERENCE,
     .acquisition_time = ADC_ACQUISITION_TIME,
     .channel_id = ADC_CHANNEL_ID,
+    .input_positive = 2,  /* AIN2 - P0.04 pin */
 };
 
 static struct adc_sequence sequence = {
@@ -62,30 +63,50 @@ void battery_monitor_init(void)
 {
     int err;
     
-    LOG_INF("Initializing battery monitor");
+    LOG_INF("========================================");
+    LOG_INF("BATTERY MONITOR INITIALIZATION STARTING");
+    LOG_INF("========================================");
     
     /* Get ADC device */
     if (!device_is_ready(adc_dev)) {
         /* If ADC is not available, use simulated battery */
         LOG_WRN("ADC device not ready, using simulated battery level");
+        LOG_WRN("Check device tree configuration for ADC");
         current_battery_level = 85; /* Simulate 85% battery */
         return;
     }
     
+    LOG_INF("ADC device is ready for battery monitoring");
+    
     /* Configure ADC channel */
+    LOG_INF("Configuring ADC channel %d", ADC_CHANNEL_ID);
+    LOG_INF("  - Gain: 1/4");
+    LOG_INF("  - Reference: Internal (0.6V)");
+    LOG_INF("  - Resolution: %d bits", ADC_RESOLUTION);
+    LOG_INF("  - Input: AIN2 (P0.04)");
+    
     err = adc_channel_setup(adc_dev, &channel_cfg);
     if (err < 0) {
-        LOG_ERR("ADC channel setup failed: %d", err);
+        LOG_ERR("ADC channel setup failed with error code: %d", err);
+        LOG_ERR("Falling back to simulated battery level");
         current_battery_level = 85; /* Fallback to simulated */
         return;
     }
     
+    LOG_INF("ADC channel configured successfully");
+    
     /* Take initial battery reading */
+    LOG_INF("Taking initial battery voltage reading...");
     current_voltage_mv = read_battery_voltage();
     current_battery_level = voltage_to_percentage(current_voltage_mv);
     
-    LOG_INF("Battery monitor initialized: %u%% (%u mV)", 
-            current_battery_level, current_voltage_mv);
+    LOG_INF("========================================");
+    LOG_INF("BATTERY MONITOR INITIALIZED SUCCESSFULLY");
+    LOG_INF("  Initial voltage: %u mV", current_voltage_mv);
+    LOG_INF("  Battery level: %u%%", current_battery_level);
+    LOG_INF("  Low threshold: %u mV", BATTERY_VOLTAGE_LOW_MV);
+    LOG_INF("  Critical threshold: %u mV", BATTERY_VOLTAGE_CRITICAL_MV);
+    LOG_INF("========================================");
 }
 
 /**
@@ -103,15 +124,24 @@ void battery_monitor_update(void)
     }
     last_update = now;
     
+    LOG_DBG("Performing periodic battery check (every 30 seconds)");
+    
     /* Read current battery voltage */
     uint16_t voltage_mv = read_battery_voltage();
     uint8_t new_level = voltage_to_percentage(voltage_mv);
     
+    LOG_DBG("Battery reading: %u mV (%u%%)", voltage_mv, new_level);
+    
     /* Check if battery level changed significantly (>5%) */
     int level_change = (int)new_level - (int)current_battery_level;
     if (abs(level_change) > 5) {
-        LOG_INF("Battery level changed: %u%% -> %u%% (%u mV)", 
-                current_battery_level, new_level, voltage_mv);
+        LOG_INF("========================================");
+        LOG_INF("BATTERY LEVEL CHANGE DETECTED");
+        LOG_INF("  Previous: %u%% (%u mV)", current_battery_level, current_voltage_mv);
+        LOG_INF("  Current:  %u%% (%u mV)", new_level, voltage_mv);
+        LOG_INF("  Change:   %+d%%", level_change);
+        LOG_INF("========================================");
+        
         current_battery_level = new_level;
         current_voltage_mv = voltage_mv;
         
@@ -123,7 +153,13 @@ void battery_monitor_update(void)
     /* Check for low battery conditions */
     if (voltage_mv <= BATTERY_VOLTAGE_CRITICAL_MV) {
         if (!critical_battery_warning_sent) {
-            LOG_ERR("CRITICAL BATTERY: %u mV (%u%%)", voltage_mv, new_level);
+            LOG_ERR("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            LOG_ERR("CRITICAL BATTERY WARNING");
+            LOG_ERR("  Voltage: %u mV", voltage_mv);
+            LOG_ERR("  Level: %u%%", new_level);
+            LOG_ERR("  Action: LED error pattern activated");
+            LOG_ERR("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            
             led_set_pattern(LED_ID_ERROR, LED_PATTERN_ERROR);
             critical_battery_warning_sent = true;
             
@@ -135,14 +171,26 @@ void battery_monitor_update(void)
         }
     } else if (voltage_mv <= BATTERY_VOLTAGE_LOW_MV) {
         if (!low_battery_warning_sent) {
-            LOG_WRN("Low battery warning: %u mV (%u%%)", voltage_mv, new_level);
+            LOG_WRN("========================================");
+            LOG_WRN("LOW BATTERY WARNING");
+            LOG_WRN("  Voltage: %u mV", voltage_mv);
+            LOG_WRN("  Level: %u%%", new_level);
+            LOG_WRN("  Action: LED slow blink pattern");
+            LOG_WRN("========================================");
+            
             led_set_pattern(LED_ID_ERROR, LED_PATTERN_SLOW_BLINK);
             low_battery_warning_sent = true;
         }
     } else {
         /* Battery recovered above warning thresholds */
         if (low_battery_warning_sent || critical_battery_warning_sent) {
-            LOG_INF("Battery level recovered: %u mV (%u%%)", voltage_mv, new_level);
+            LOG_INF("========================================");
+            LOG_INF("BATTERY LEVEL RECOVERED");
+            LOG_INF("  Voltage: %u mV", voltage_mv);
+            LOG_INF("  Level: %u%%", new_level);
+            LOG_INF("  Status: Normal operation restored");
+            LOG_INF("========================================");
+            
             led_set_pattern(LED_ID_ERROR, LED_PATTERN_OFF);
             low_battery_warning_sent = false;
             critical_battery_warning_sent = false;
@@ -160,7 +208,14 @@ uint8_t battery_monitor_get_level(void)
     if (!adc_dev || !device_is_ready(adc_dev)) {
         /* Simulate gradual battery drain for testing */
         static uint32_t sim_counter = 0;
+        static bool logged_once = false;
         sim_counter++;
+        
+        if (!logged_once) {
+            LOG_WRN("Using simulated battery level (ADC not available)");
+            logged_once = true;
+        }
+        
         /* Decrease by 1% every 100 calls (simulating discharge) */
         uint8_t simulated = 95 - (sim_counter / 100);
         if (simulated < 10) simulated = 10; /* Don't go below 10% in simulation */
@@ -207,8 +262,15 @@ static uint16_t read_battery_voltage(void)
 {
     if (!adc_dev || !device_is_ready(adc_dev)) {
         /* Return simulated voltage if ADC not available */
+        static bool logged_once = false;
+        if (!logged_once) {
+            LOG_WRN("ADC not available - returning simulated voltage");
+            logged_once = true;
+        }
         return BATTERY_VOLTAGE_MAX_MV - 200; /* Simulate 2.8V */
     }
+    
+    LOG_DBG("Reading ADC channel %d for battery voltage", ADC_CHANNEL_ID);
     
     int16_t buf;
     sequence.buffer = &buf;
@@ -216,9 +278,12 @@ static uint16_t read_battery_voltage(void)
     
     int err = adc_read(adc_dev, &sequence);
     if (err < 0) {
-        LOG_ERR("ADC read failed: %d", err);
+        LOG_ERR("ADC read failed with error code: %d", err);
+        LOG_ERR("Returning last known voltage: %u mV", current_voltage_mv);
         return current_voltage_mv; /* Return last known value */
     }
+    
+    LOG_DBG("ADC raw value: %d", buf);
     
     /* Convert ADC value to millivolts */
     /* This calculation depends on your hardware design */
@@ -229,9 +294,14 @@ static uint16_t read_battery_voltage(void)
                          ADC_RESOLUTION, 
                          &val_mv);
     
+    LOG_DBG("ADC converted to: %d mV (before divider correction)", val_mv);
+    
     /* Apply voltage divider correction if needed */
-    /* Example: If using 2:1 voltage divider */
-    val_mv *= 2;
+    /* For 3.3V system - adjust this multiplier based on your actual voltage divider */
+    /* If no voltage divider, comment out the multiplication */
+    /* val_mv *= 2; */  /* Uncomment and adjust if using voltage divider */
+    
+    LOG_DBG("Final battery voltage: %d mV (direct measurement, no divider)", val_mv);
     
     return (uint16_t)val_mv;
 }

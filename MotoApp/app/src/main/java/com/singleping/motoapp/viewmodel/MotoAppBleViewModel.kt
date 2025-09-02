@@ -3,11 +3,13 @@ package com.singleping.motoapp.viewmodel
 import android.app.Application
 import android.bluetooth.BluetoothDevice
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.singleping.motoapp.ble.BleScanner
 import com.singleping.motoapp.ble.HostBleManager
 import com.singleping.motoapp.data.*
+import com.singleping.motoapp.export.DataExporter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,9 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     // BLE components
     private val bleManager = HostBleManager(application)
     private val bleScanner = BleScanner(application)
+    
+    // Data exporter for Google Drive
+    private val dataExporter = DataExporter(application)
     
     // State flows for UI
     private val _connectionState = MutableStateFlow(ConnectionState())
@@ -367,6 +372,31 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     fun exportLogData(): List<LogData> {
         return _loggingData.value
+    }
+    
+    /**
+     * Initialize data exporter with activity context
+     */
+    fun initializeExporter(activity: ComponentActivity) {
+        dataExporter.initialize(activity) { success, message ->
+            _errorMessage.value = message
+        }
+    }
+    
+    /**
+     * Export log data to Google Drive
+     */
+    fun exportToGoogleDrive() {
+        viewModelScope.launch {
+            val logData = _loggingData.value
+            if (logData.isEmpty()) {
+                _errorMessage.value = "No data to export"
+                return@launch
+            }
+            
+            _errorMessage.value = "Exporting to Google Drive..."
+            dataExporter.exportToGoogleDrive(logData)
+        }
     }
     
     
