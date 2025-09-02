@@ -34,6 +34,7 @@ static uint8_t current_battery_level = 100;
 static uint16_t current_voltage_mv = BATTERY_VOLTAGE_MAX_MV;
 static bool low_battery_warning_sent = false;
 static bool critical_battery_warning_sent = false;
+static bool adc_initialized = false;  /* Track if ADC has been initialized */
 
 /* ADC device and configuration */
 static const struct device *adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc));
@@ -58,13 +59,29 @@ static uint8_t voltage_to_percentage(uint16_t voltage_mv);
 
 /**
  * Initialize battery monitoring
+ * POWER OPTIMIZED: Does nothing at boot, ADC init deferred to first SW3 press
  */
 void battery_monitor_init(void)
 {
+    /* POWER OPTIMIZATION: Skip ALL initialization at boot */
+    /* ADC will be initialized on first SW3 button press */
+    LOG_INF("Battery monitor: DEFERRED INIT (press SW3 to activate)");
+}
+
+/**
+ * Initialize ADC on first use (lazy initialization)
+ * Called internally when SW3 is first pressed
+ */
+static int battery_monitor_init_adc(void)
+{
     int err;
     
+    if (adc_initialized) {
+        return 0;  /* Already initialized */
+    }
+    
     LOG_INF("========================================");
-    LOG_INF("BATTERY MONITOR INITIALIZATION STARTING");
+    LOG_INF("ADC INITIALIZATION (FIRST SW3 PRESS)");
     LOG_INF("========================================");
     
     /* Get ADC device */
@@ -73,7 +90,7 @@ void battery_monitor_init(void)
         LOG_WRN("ADC device not ready, using simulated battery level");
         LOG_WRN("Check device tree configuration for ADC");
         current_battery_level = 85; /* Simulate 85% battery */
-        return;
+        return -ENODEV;
     }
     
     LOG_INF("ADC device is ready for battery monitoring");
@@ -90,65 +107,60 @@ void battery_monitor_init(void)
         LOG_ERR("ADC channel setup failed with error code: %d", err);
         LOG_ERR("Falling back to simulated battery level");
         current_battery_level = 85; /* Fallback to simulated */
-        return;
+        return err;
     }
     
     LOG_INF("ADC channel configured successfully");
-    
-    /* Take initial battery reading */
-    LOG_INF("Taking initial battery voltage reading...");
-    current_voltage_mv = read_battery_voltage();
-    current_battery_level = voltage_to_percentage(current_voltage_mv);
-    
     LOG_INF("========================================");
-    LOG_INF("BATTERY MONITOR INITIALIZED SUCCESSFULLY");
-    LOG_INF("  Initial voltage: %u mV", current_voltage_mv);
-    LOG_INF("  Battery level: %u%%", current_battery_level);
-    LOG_INF("  Low threshold: %u mV", BATTERY_VOLTAGE_LOW_MV);
-    LOG_INF("  Critical threshold: %u mV", BATTERY_VOLTAGE_CRITICAL_MV);
-    LOG_INF("========================================");
+    
+    adc_initialized = true;
+    return 0;
 }
 
 /**
- * Update battery monitoring
- * Called periodically from main loop
+ * Read battery voltage once (on-demand)
+ * Power-optimized function to read battery only when requested
  */
-void battery_monitor_update(void)
+void battery_monitor_read_once(void)
 {
-    static uint32_t last_update = 0;
-    uint32_t now = k_uptime_get_32();
-    
-    /* Update battery level every 30 seconds to save power */
-    if ((now - last_update) < 30000) {
-        return;
+    /* Initialize ADC on first use (lazy initialization) */
+    if (!adc_initialized) {
+        int err = battery_monitor_init_adc();
+        if (err < 0) {
+            LOG_ERR("Failed to initialize ADC on first use");
+            return;
+        }
     }
-    last_update = now;
     
-    LOG_DBG("Performing periodic battery check (every 30 seconds)");
+    LOG_INF("========================================");
+    LOG_INF("BATTERY READ REQUESTED (SW3 BUTTON)");
+    LOG_INF("========================================");
     
     /* Read current battery voltage */
     uint16_t voltage_mv = read_battery_voltage();
     uint8_t new_level = voltage_to_percentage(voltage_mv);
     
-    LOG_DBG("Battery reading: %u mV (%u%%)", voltage_mv, new_level);
+    LOG_INF("Battery Status:");
+    LOG_INF("  Voltage: %u mV", voltage_mv);
+    LOG_INF("  Level: %u%%", new_level);
+    LOG_INF("  Status: %s", 
+            voltage_mv <= BATTERY_VOLTAGE_CRITICAL_MV ? "CRITICAL" :
+            voltage_mv <= BATTERY_VOLTAGE_LOW_MV ? "LOW" :
+            "NORMAL");
     
     /* Check if battery level changed significantly (>5%) */
     int level_change = (int)new_level - (int)current_battery_level;
     if (abs(level_change) > 5) {
-        LOG_INF("========================================");
-        LOG_INF("BATTERY LEVEL CHANGE DETECTED");
-        LOG_INF("  Previous: %u%% (%u mV)", current_battery_level, current_voltage_mv);
-        LOG_INF("  Current:  %u%% (%u mV)", new_level, voltage_mv);
-        LOG_INF("  Change:   %+d%%", level_change);
-        LOG_INF("========================================");
-        
-        current_battery_level = new_level;
-        current_voltage_mv = voltage_mv;
-        
-        /* Notify BLE service of battery change */
-        extern int ble_service_notify_battery(void);
-        ble_service_notify_battery();
+        LOG_INF("  Change from last read: %+d%%", level_change);
     }
+    
+    /* Always update the values when read on-demand */
+    current_battery_level = new_level;
+    current_voltage_mv = voltage_mv;
+    
+    /* Notify BLE service of battery reading */
+    extern int ble_service_notify_battery(void);
+    ble_service_notify_battery();
     
     /* Check for low battery conditions */
     if (voltage_mv <= BATTERY_VOLTAGE_CRITICAL_MV) {
@@ -157,10 +169,11 @@ void battery_monitor_update(void)
             LOG_ERR("CRITICAL BATTERY WARNING");
             LOG_ERR("  Voltage: %u mV", voltage_mv);
             LOG_ERR("  Level: %u%%", new_level);
-            LOG_ERR("  Action: LED error pattern activated");
+            LOG_ERR("  Action: Consider charging immediately");
             LOG_ERR("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             
-            led_set_pattern(LED_ID_ERROR, LED_PATTERN_ERROR);
+            /* Power optimization: Don't use LED patterns to save battery */
+            /* led_set_pattern(LED_ID_ERROR, LED_PATTERN_ERROR); */
             critical_battery_warning_sent = true;
             
             /* Force deep sleep to preserve remaining battery */
@@ -175,10 +188,10 @@ void battery_monitor_update(void)
             LOG_WRN("LOW BATTERY WARNING");
             LOG_WRN("  Voltage: %u mV", voltage_mv);
             LOG_WRN("  Level: %u%%", new_level);
-            LOG_WRN("  Action: LED slow blink pattern");
             LOG_WRN("========================================");
             
-            led_set_pattern(LED_ID_ERROR, LED_PATTERN_SLOW_BLINK);
+            /* Power optimization: Don't use LED patterns to save battery */
+            /* led_set_pattern(LED_ID_ERROR, LED_PATTERN_SLOW_BLINK); */
             low_battery_warning_sent = true;
         }
     } else {
@@ -188,14 +201,27 @@ void battery_monitor_update(void)
             LOG_INF("BATTERY LEVEL RECOVERED");
             LOG_INF("  Voltage: %u mV", voltage_mv);
             LOG_INF("  Level: %u%%", new_level);
-            LOG_INF("  Status: Normal operation restored");
+            LOG_INF("  Status: Normal operation");
             LOG_INF("========================================");
             
-            led_set_pattern(LED_ID_ERROR, LED_PATTERN_OFF);
+            /* Power optimization: LED already off */
+            /* led_set_pattern(LED_ID_ERROR, LED_PATTERN_OFF); */
             low_battery_warning_sent = false;
             critical_battery_warning_sent = false;
         }
     }
+    
+    LOG_INF("========================================");
+}
+
+/**
+ * Update battery monitoring (DEPRECATED)
+ * This function is kept for compatibility but does nothing for power optimization
+ */
+void battery_monitor_update(void)
+{
+    /* Power optimization: This function is now a no-op */
+    /* Battery is only read on-demand via battery_monitor_read_once() */
 }
 
 /**
@@ -260,7 +286,7 @@ bool battery_monitor_is_critical(void)
  */
 static uint16_t read_battery_voltage(void)
 {
-    if (!adc_dev || !device_is_ready(adc_dev)) {
+    if (!adc_initialized || !adc_dev || !device_is_ready(adc_dev)) {
         /* Return simulated voltage if ADC not available */
         static bool logged_once = false;
         if (!logged_once) {

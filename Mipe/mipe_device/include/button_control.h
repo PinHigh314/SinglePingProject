@@ -6,5 +6,6 @@
 void button_control_init(void);
 void button_control_update(void);
 bool button_was_pressed(void);
+bool button_sw3_was_pressed(void);  /* SW3 for battery read */
 
 #endif // BUTTON_CONTROL_H

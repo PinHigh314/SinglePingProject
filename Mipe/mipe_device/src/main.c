@@ -60,81 +60,78 @@
 #include <zephyr/kernel.h>
 
 /**
- * Main entry point for Mipe device
- * Initializes all subsystems and enters main control loop
+ * Main entry point for Mipe device - POWER OPTIMIZED
+ * Minimal initialization and power-conscious main loop
  */
 int main(void) {
-    /* Initialize LED control for status indication
-     * LED patterns indicate connection state and battery status
-     */
-    led_control_init();
+    /* POWER OPTIMIZATION: Minimal initialization sequence */
     
-    /* Initialize button control for manual wake from deep sleep
-     * Button press can force device into pairing mode
+    /* Initialize button control for SW3 battery reading
+     * SW0 for other functions, SW3 specifically for battery
      */
     button_control_init();
     
-    /* Initialize BLE service as power-optimized peripheral
-     * Configures advertising intervals and connection parameters
-     * for minimal power consumption
+    /* POWER OPTIMIZATION: No battery init at boot!
+     * ADC initialization is deferred until first SW3 press
+     * This keeps boot sequence absolutely minimal
+     */
+    
+    /* Initialize BLE service and start advertising immediately
+     * This is the primary function - advertising for RSSI measurement
      */
     ble_service_init();
     
     /* Initialize connection manager for Host communication
-     * Handles connection states, listening mode, and recovery protocol
+     * Handles connection states and recovery protocol
      */
     connection_manager_init();
     
-    /* Initialize battery monitoring for power status reporting
-     * Critical for achieving 30+ day battery life target
-     * Reports battery level to Host during connections
+    /* POWER OPTIMIZATION: No LED patterns at startup
+     * LEDs consume power - only use when absolutely necessary
      */
-    battery_monitor_init();
+    
+    printk("========================================\n");
+    printk("MIPE DEVICE STARTED - ULTRA MINIMAL BOOT\n");
+    printk("  BLE advertising: ACTIVE\n");
+    printk("  Battery ADC: DEFERRED (SW3 activates)\n");
+    printk("  Boot sequence: MINIMAL\n");
+    printk("========================================\n");
 
-    /* Start heartbeat LED pattern to indicate system ready
-     * This will be replaced with power-optimized status indication
-     * in TMT6 (heartbeat consumes unnecessary power)
-     */
-    led_set_pattern(LED_ID_HEARTBEAT, LED_PATTERN_HEARTBEAT);
-
-    /* Main control loop
-     * Processes system events with minimal CPU usage
-     * Most time spent in sleep mode for power conservation
+    /* Main control loop - POWER OPTIMIZED
+     * Minimal processing, maximum sleep time
      */
     while (1) {
-        /* Process button events for manual control
-         * Allows user to force pairing mode or wake from deep sleep
+        /* Check buttons - primary user interface
+         * SW3 triggers battery read, SW0 for other functions
          */
         button_control_update();
         
-        /* Update LED patterns based on system state
-         * TMT6 will optimize this for minimal power usage
-         */
-        led_control_update();
+        /* Check if SW3 was pressed for battery reading */
+        if (button_sw3_was_pressed()) {
+            /* Read battery voltage once and log it */
+            battery_monitor_read_once();
+        }
         
-        /* Process BLE events and maintain connection state
-         * Handles Host commands and measurement requests
-         * Implements power-optimized communication protocol
+        /* Process BLE events - essential for operation
+         * Handles advertising and Host communication
          */
         ble_service_update();
         
-        /* Manage connection states and recovery protocol
-         * Implements listening mode with single ping response
-         * Handles timeout transitions to deep sleep
+        /* Manage connection states - essential for recovery
+         * Handles connection loss and recovery protocol
          */
         connection_manager_update();
         
-        /* Monitor battery status and report to Host
-         * Triggers low battery warnings at 10%
-         * Forces deep sleep when battery critical
+        /* POWER OPTIMIZATION: Removed unnecessary updates
+         * - No LED updates (saves power)
+         * - No periodic battery monitoring (only on-demand)
          */
-        battery_monitor_update();
 
         /* Sleep between updates to conserve power
-         * 10ms sleep allows responsive operation while minimizing power
-         * TMT6 will optimize this timing based on power measurements
+         * Increased from 10ms to 100ms for better power savings
+         * Still responsive enough for button presses and BLE events
          */
-        k_msleep(10);
+        k_msleep(100);
     }
 
     return 0;

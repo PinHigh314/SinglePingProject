@@ -19,8 +19,16 @@ void battery_monitor_init(void);
 /**
  * Update battery monitoring
  * Should be called periodically to check battery status
+ * NOTE: For power optimization, this is now deprecated - use battery_monitor_read_once() instead
  */
 void battery_monitor_update(void);
+
+/**
+ * Read battery voltage once (on-demand)
+ * Power-optimized function to read battery only when requested (e.g., button press)
+ * Updates internal state and logs the reading
+ */
+void battery_monitor_read_once(void);
 
 /**
  * Get current battery level as percentage

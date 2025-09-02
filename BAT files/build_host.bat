@@ -115,10 +115,6 @@ if exist build\zephyr\zephyr.elf (
 )
 
 echo.
-echo To flash the device, use:
-echo   nrfjprog --program build\zephyr\zephyr.hex --chiperase --verify -r
-echo Or use the nRF Connect Programmer app
-echo.
 
 :: Get description from command line argument or use default
 set description=%2
@@ -175,6 +171,51 @@ if %errorlevel% equ 0 (
     echo %date% %time% - Built: %output_name% >> "%~dp0..\compiled_code\version_log.md"
 ) else (
     echo Warning: Failed to copy hex file to compiled_code directory
+)
+
+echo.
+echo ========================================
+echo Flash Device?
+echo ========================================
+echo.
+
+:: Prompt for flashing
+set /p flash_choice="Do you want to flash the Host device now? (Y/N): "
+
+if /i "%flash_choice%"=="Y" (
+    echo.
+    echo Flashing Host device...
+    echo Running: nrfjprog --program build\zephyr\zephyr.hex --chiperase --verify -r
+    
+    nrfjprog --program build\zephyr\zephyr.hex --chiperase --verify -r
+    
+    if %errorlevel% equ 0 (
+        echo.
+        echo ========================================
+        echo Device flashed successfully!
+        echo ========================================
+        echo.
+        echo The Host device is now running the new firmware.
+        echo You can monitor the output using a serial terminal at 115200 baud.
+    ) else (
+        echo.
+        echo ========================================
+        echo Flashing failed!
+        echo ========================================
+        echo.
+        echo Please check:
+        echo   1. Device is connected via USB
+        echo   2. nrfjprog is installed and in PATH
+        echo   3. Device is powered on
+        echo.
+        echo You can manually flash using:
+        echo   nrfjprog --program build\zephyr\zephyr.hex --chiperase --verify -r
+    )
+) else (
+    echo.
+    echo Skipping flash. You can manually flash later using:
+    echo   nrfjprog --program build\zephyr\zephyr.hex --chiperase --verify -r
+    echo Or use the nRF Connect Programmer app
 )
 
 echo.
