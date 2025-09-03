@@ -41,7 +41,8 @@ fun getDistanceColor(rssi: Float): Color {
 @Composable
 fun MainScreen(
     viewModel: MotoAppBleViewModel,
-    onViewLogs: () -> Unit = {}
+    onViewLogs: () -> Unit = {},
+    onNavigateToCalibration: () -> Unit
 ) {
     val connectionState by viewModel.connectionState.collectAsState()
     val streamState by viewModel.streamState.collectAsState()
@@ -96,8 +97,18 @@ fun MainScreen(
             onSyncMipe = { viewModel.syncWithMipe() },
             batteryVoltage = mipeStatus?.batteryVoltage
         )
+
+        Button(
+            onClick = onNavigateToCalibration,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            enabled = connectionState.isConnected
+        ) {
+            Text(text = "Calibration Process")
+        }
         
-        // 3. Real-Time RSSI Graph
+        // 3. Real-Time RSSI Graph with Distance Display
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -105,11 +116,53 @@ fun MainScreen(
             Column(
                 modifier = Modifier.padding(16.dp)
             ) {
+                // Distance Display above histogram
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Distance to Mipe:",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (distanceData.currentDistance > 0) {
+                                "${String.format("%.2f", distanceData.currentDistance)} m"
+                            } else {
+                                "-- m"
+                            },
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = getDistanceColor(hostInfo.signalStrength)
+                        )
+                        if (distanceData.confidence > 0) {
+                            Text(
+                                text = " (${(distanceData.confidence * 100).toInt()}%)",
+                                fontSize = 14.sp,
+                                color = when {
+                                    distanceData.confidence > 0.8f -> Color(0xFF4CAF50)
+                                    distanceData.confidence > 0.6f -> Color(0xFFFF9800)
+                                    else -> Color(0xFFF44336)
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                Divider()
+                
                 Text(
                     text = "RSSI Histogram",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                 )
                 RssiGraph(
                     rssiHistory = rssiHistory,
@@ -136,12 +189,6 @@ fun MainScreen(
             streamState = streamState,
             hostInfo = hostInfo,
             connectionTimeDisplay = connectionTimeDisplay
-        )
-        
-        // 7. Distance Calculation Section
-        DistanceSection(
-            distanceData = distanceData,
-            currentRssi = hostInfo.signalStrength
         )
     }
 }
@@ -537,8 +584,8 @@ fun DistanceSection(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Algorithm Used:")
-                    Text("RSSI-Based (Simulated)", fontWeight = FontWeight.Medium)
+                    Text("Algorithm:")
+                    Text("Clustering + Lookup Table", fontWeight = FontWeight.Medium)
                 }
                 
                 Row(
@@ -546,7 +593,28 @@ fun DistanceSection(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Confidence:")
-                    Text("±${distanceData.confidence}m")
+                    Text(
+                        text = "${(distanceData.confidence * 100).toInt()}%",
+                        color = when {
+                            distanceData.confidence > 0.8f -> Color(0xFF4CAF50)
+                            distanceData.confidence > 0.6f -> Color(0xFFFF9800)
+                            else -> Color(0xFFF44336)
+                        }
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Accuracy:")
+                    Text(
+                        text = when {
+                            distanceData.confidence > 0.8f -> "±${String.format("%.1f", distanceData.confidence * 0.3f)}m"
+                            distanceData.confidence > 0.6f -> "±${String.format("%.1f", distanceData.confidence * 0.5f)}m"
+                            else -> "±${String.format("%.1f", distanceData.confidence * 1.0f)}m"
+                        }
+                    )
                 }
                 
                 Row(

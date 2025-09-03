@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.singleping.motoapp.ble.BleScanner
 import com.singleping.motoapp.ble.HostBleManager
 import com.singleping.motoapp.data.*
+import com.singleping.motoapp.distance.VelocitySmoothing
 import com.singleping.motoapp.export.DataExporter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -61,6 +62,9 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _logStats = MutableStateFlow(LogStats())
     val logStats: StateFlow<LogStats> = _logStats.asStateFlow()
+
+    private val _calibrationState = MutableStateFlow(CalibrationState())
+    val calibrationState: StateFlow<CalibrationState> = _calibrationState.asStateFlow()
     
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -70,6 +74,13 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     private var streamingJob: Job? = null
     private var connectionTimeJob: Job? = null
     private var logStatsJob: Job? = null
+    
+    // Distance update throttling
+    private var lastDistanceUpdateTime = 0L
+    private val DISTANCE_UPDATE_INTERVAL_MS = 1000L // Update distance display every 1 second
+    
+    // Velocity-based smoothing for realistic movement
+    private val velocitySmoothing = VelocitySmoothing()
     
     init {
         // Set up BLE callbacks
@@ -291,6 +302,27 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     private fun handleRealRssiData(rssi: Int, hostBatteryMv: Int, mipeBatteryMv: Int) {
         val timestamp = System.currentTimeMillis()
+
+        if (_calibrationState.value.isCollecting) {
+            val calibrationData = CalibrationData(
+                timestamp = timestamp,
+                rssi = rssi.toFloat(),
+                mipeBatteryMv = mipeBatteryMv
+            )
+            val updatedData = _calibrationState.value.data + calibrationData
+            _calibrationState.value = _calibrationState.value.copy(
+                data = updatedData,
+                sampleCount = updatedData.size
+            )
+
+            if (updatedData.size >= 50) {
+                _calibrationState.value = _calibrationState.value.copy(
+                    isCollecting = false,
+                    isComplete = true
+                )
+                stopDataStream()
+            }
+        }
         
         // Update host info with battery voltage
         _hostInfo.value = _hostInfo.value.copy(
@@ -329,9 +361,51 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
             packetsReceived = _streamState.value.packetsReceived + 1
         )
         
-        // Calculate distance
-        val distance = calculateDistance(rssiValue)
-        updateDistanceData(distance)
+        // Calculate distance using improved calculator
+        val distanceResult = calculateImprovedDistance(rssiValue)
+        
+        // Check if we should update the distance display (throttle to 1 second)
+        val currentTime = System.currentTimeMillis()
+        val shouldUpdateDistance = (currentTime - lastDistanceUpdateTime) >= DISTANCE_UPDATE_INTERVAL_MS
+        
+        if (distanceResult != null && shouldUpdateDistance) {
+            // We have a clustered result and it's time to update
+            lastDistanceUpdateTime = currentTime
+            
+            // Apply velocity-based smoothing for realistic movement
+            val smoothedResult = velocitySmoothing.processDistance(
+                newDistance = distanceResult.distance,
+                confidence = distanceResult.confidence,
+                timestamp = currentTime
+            )
+            
+            // Update confidence based on clustering result
+            _distanceData.value = _distanceData.value.copy(
+                confidence = distanceResult.confidence
+            )
+            
+            // Use the smoothed distance
+            updateDistanceData(smoothedResult.distance)
+            
+            // Log if velocity limiting was applied
+            if (smoothedResult.velocityLimited) {
+                Log.d(TAG, "Velocity limited: ${distanceResult.distance}m -> ${smoothedResult.distance}m")
+            }
+        } else if (distanceResult == null && shouldUpdateDistance) {
+            // No clustering result yet, but it's time to update - use lookup table directly
+            val distance = calculateDistance(rssiValue)
+            lastDistanceUpdateTime = currentTime
+            
+            // Apply smoothing with lower confidence since we don't have clustering
+            val smoothedResult = velocitySmoothing.processDistance(
+                newDistance = distance,
+                confidence = 0.5f, // Lower confidence for non-clustered results
+                timestamp = currentTime
+            )
+            
+            updateDistanceData(smoothedResult.distance)
+        }
+        // If not time to update, we just collect the RSSI data without updating distance display
         
         // Update host info with current RSSI and battery
         _hostInfo.value = _hostInfo.value.copy(
@@ -339,9 +413,10 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
             batteryVoltage = if (hostBatteryMv > 0) hostBatteryMv / 1000f else _hostInfo.value.batteryVoltage
         )
         
-        // Log the data if streaming is active
+        // Log the data if streaming is active (use the last known distance for logging)
         if (_streamState.value.isStreaming) {
-            logData(rssiValue, distance, hostBatteryMv, mipeBatteryMv)
+            val logDistance = _distanceData.value.currentDistance
+            logData(rssiValue, logDistance, hostBatteryMv, mipeBatteryMv)
         }
     }
     
@@ -400,6 +475,12 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     fun clearLogData() {
         _loggingData.value = emptyList()
         _logStats.value = LogStats()
+        // Also clear the RSSI histogram data
+        _rssiHistory.value = emptyList()
+        // Reset distance data as well since it depends on RSSI history
+        _distanceData.value = DistanceData()
+        // Reset velocity smoothing
+        velocitySmoothing.reset()
     }
     
     fun exportLogData(): List<LogData> {
@@ -410,13 +491,12 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
      * Initialize data exporter with activity context
      */
     fun initializeExporter(activity: ComponentActivity) {
-        dataExporter.initialize(activity) { success, message ->
-            _errorMessage.value = message
-        }
+        // No longer needed for local storage
+        _errorMessage.value = "Ready to save data locally"
     }
     
     /**
-     * Export log data to Google Drive
+     * Export log data to Downloads folder
      */
     fun exportToGoogleDrive() {
         viewModelScope.launch {
@@ -426,15 +506,50 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
                 return@launch
             }
             
-            _errorMessage.value = "Exporting to Google Drive..."
-            dataExporter.exportToGoogleDrive(logData)
+            try {
+                dataExporter.exportLogData(logData)
+                _errorMessage.value = "Log data exported to Downloads folder"
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to export log data", e)
+                _errorMessage.value = "Export failed: ${e.message}"
+            }
+        }
+    }
+
+    fun selectCalibrationDistance(distance: Int) {
+        _calibrationState.value = _calibrationState.value.copy(selectedDistance = distance)
+    }
+
+    fun startCalibration() {
+        if (_calibrationState.value.selectedDistance == 0) return
+        _calibrationState.value = _calibrationState.value.copy(isCollecting = true)
+        viewModelScope.launch {
+            bleManager.startDataStream()
+        }
+    }
+
+    fun cancelCalibration() {
+        _calibrationState.value = CalibrationState()
+    }
+
+    fun completeCalibration(comment: String) {
+        val finalState = _calibrationState.value.copy(comment = comment)
+        _calibrationState.value = finalState
+        viewModelScope.launch {
+            dataExporter.exportCalibrationData(finalState)
         }
     }
     
     
     private fun updateDistanceData(newDistance: Float) {
         val currentData = _distanceData.value
-        val allDistances = _rssiHistory.value.map { calculateDistance(it.value) }
+        
+        // For average calculation, use the improved distance if available
+        val allDistances = mutableListOf<Float>()
+        for (rssiData in _rssiHistory.value) {
+            val result = calculateImprovedDistance(rssiData.value)
+            allDistances.add(result?.distance ?: calculateDistance(rssiData.value))
+        }
         
         val avgDistance = if (allDistances.isNotEmpty()) {
             allDistances.average().toFloat()
@@ -448,12 +563,19 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         
         val maxDist = maxOf(currentData.maxDistance, newDistance)
         
+        // Keep existing confidence if it was set by clustering
+        val confidence = if (currentData.confidence > 0.5f) {
+            currentData.confidence
+        } else {
+            0.5f
+        }
+        
         _distanceData.value = DistanceData(
             currentDistance = newDistance,
             averageDistance = avgDistance,
             minDistance = minDist,
             maxDistance = maxDist,
-            confidence = 0.5f,
+            confidence = confidence,
             lastUpdated = System.currentTimeMillis(),
             sampleCount = currentData.sampleCount + 1
         )

@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.*
@@ -32,7 +32,7 @@ fun LogViewerScreen(
                 title = { Text("Log Viewer") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -99,7 +99,7 @@ fun LogViewerScreen(
                 ) {
                     items(loggingData.reversed()) { logData ->
                         LogDataItem(logData = logData)
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             }
@@ -126,7 +126,7 @@ fun LogViewerScreen(
                 ) {
                     items(logHistory.reversed()) { logEntry ->
                         SystemLogItem(logEntry = logEntry)
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             }

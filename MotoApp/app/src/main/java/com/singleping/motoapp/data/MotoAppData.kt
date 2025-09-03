@@ -1,6 +1,7 @@
 package com.singleping.motoapp.data
 
 import androidx.compose.ui.graphics.Color
+import com.singleping.motoapp.distance.ImprovedDistanceCalculator
 
 // Data classes for MotoApp TMT1
 
@@ -59,6 +60,21 @@ data class LogStats(
     val isLogging: Boolean = false
 )
 
+data class CalibrationData(
+    val timestamp: Long,
+    val rssi: Float,
+    val mipeBatteryMv: Int
+)
+
+data class CalibrationState(
+    val selectedDistance: Int = 0,
+    val sampleCount: Int = 0,
+    val isCollecting: Boolean = false,
+    val isComplete: Boolean = false,
+    val comment: String = "",
+    val data: List<CalibrationData> = emptyList()
+)
+
 // Helper functions
 fun getDistanceColor(rssi: Float): Color {
     return when {
@@ -68,17 +84,33 @@ fun getDistanceColor(rssi: Float): Color {
     }
 }
 
+// Legacy distance calculation - now uses lookup table for consistency
 fun calculateDistance(rssi: Float): Float {
-    // RSSI to distance formula: Distance = 10^((Tx_Power - RSSI) / (10 * N))
-    val txPower = -20f // Simulated transmit power in dBm
-    val pathLossExponent = 2.0f // Path loss exponent
-    
-    val distance = Math.pow(10.0, ((txPower - rssi) / (10 * pathLossExponent)).toDouble()).toFloat()
-    
-    // Add realistic noise (±0.3m)
-    val noise = ((Math.random() - 0.5) * 0.6).toFloat()
-    
-    return (distance + noise).coerceIn(0.1f, 50f) // Limit to reasonable range
+    // Use the same lookup table as the improved calculator for consistency
+    val lookupTable = com.singleping.motoapp.distance.DistanceLookupTable()
+    return lookupTable.getDistance(rssi)
+}
+
+// Improved distance calculation using clustering and lookup table
+private val improvedCalculator = ImprovedDistanceCalculator(
+    useClusteringFilter = true,
+    useLookupTable = true,
+    clusteringSampleSize = 10,  // Reduced to 10 samples (1 second of data)
+    clusteringVariationPercent = 10
+)
+
+fun calculateImprovedDistance(rssi: Float): ImprovedDistanceCalculator.DistanceResult? {
+    return improvedCalculator.processRssiValue(rssi)
+}
+
+fun forceCalculateDistance(): ImprovedDistanceCalculator.DistanceResult? {
+    return improvedCalculator.forceProcessBuffer()
+}
+
+fun getDistanceCalculatorInfo(): String {
+    return "Clustering: ${improvedCalculator.isClusteringEnabled()}, " +
+           "LookupTable: ${improvedCalculator.isLookupTableEnabled()}, " +
+           "Buffer: ${improvedCalculator.getBufferSize()}/10"
 }
 
 fun formatConnectionTime(startTime: Long): String {

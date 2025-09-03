@@ -31,7 +31,7 @@ fun RssiGraph(
             .background(Color(0xFFF5F5F5))
             .padding(8.dp)
     ) {
-        // Y-axis labels
+        // Y-axis labels (calibrated with 5 dB offset)
         Column(
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -39,15 +39,15 @@ fun RssiGraph(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("-20", fontSize = 10.sp, color = Color.Gray)
-            Text("-30", fontSize = 10.sp, color = Color.Gray)
-            Text("-40", fontSize = 10.sp, color = Color.Gray)
-            Text("-50", fontSize = 10.sp, color = Color.Gray)
-            Text("-60", fontSize = 10.sp, color = Color.Gray)
-            Text("-70", fontSize = 10.sp, color = Color.Gray)
-            Text("-80", fontSize = 10.sp, color = Color.Gray)
-            Text("-90", fontSize = 10.sp, color = Color.Gray)
-            Text("-100", fontSize = 10.sp, color = Color.Gray)
+            Text("-25", fontSize = 10.sp, color = Color.Gray)
+            Text("-35", fontSize = 10.sp, color = Color.Gray)
+            Text("-45", fontSize = 10.sp, color = Color.Gray)
+            Text("-55", fontSize = 10.sp, color = Color.Gray)
+            Text("-65", fontSize = 10.sp, color = Color.Gray)
+            Text("-75", fontSize = 10.sp, color = Color.Gray)
+            Text("-85", fontSize = 10.sp, color = Color.Gray)
+            Text("-95", fontSize = 10.sp, color = Color.Gray)
+            Text("-105", fontSize = 10.sp, color = Color.Gray)
         }
         
         // Graph canvas
@@ -78,7 +78,6 @@ private fun DrawScope.drawRssiGraph(rssiHistory: List<RssiData>) {
     
     // Draw grid lines
     val gridColor = Color.LightGray.copy(alpha = 0.5f)
-    val gridStroke = Stroke(width = 1.dp.toPx())
     
     // Horizontal grid lines (RSSI values)
     for (i in 0..8) {
@@ -102,11 +101,11 @@ private fun DrawScope.drawRssiGraph(rssiHistory: List<RssiData>) {
         )
     }
     
-    // Draw RSSI line
+    // Draw RSSI line (calibrated with 5 dB offset)
     if (rssiHistory.size > 1) {
         val path = Path()
-        val minRssi = -100f
-        val maxRssi = -20f
+        val minRssi = -105f  // Adjusted from -100f
+        val maxRssi = -25f   // Adjusted from -20f
         val rssiRange = maxRssi - minRssi
         
         rssiHistory.forEachIndexed { index, rssiData ->

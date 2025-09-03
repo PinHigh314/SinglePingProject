@@ -1,243 +1,151 @@
 package com.singleping.motoapp.export
 
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
+import android.os.Environment
 import android.util.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.Scope
-import com.google.api.client.http.javanet.NetHttpTransport
-import com.google.api.client.json.gson.GsonFactory
-import com.google.api.services.drive.Drive
-import com.google.api.services.drive.DriveScopes
-import com.google.api.services.drive.model.File
+import com.singleping.motoapp.data.CalibrationState
 import com.singleping.motoapp.data.LogData
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
 class DataExporter(private val context: Context) {
-    
+
     companion object {
         private const val TAG = "DataExporter"
-        private const val REQUEST_SIGN_IN = 1001
     }
-    
-    private var googleSignInClient: GoogleSignInClient? = null
-    private var driveService: Drive? = null
-    private var signInLauncher: ActivityResultLauncher<Intent>? = null
-    private var onExportComplete: ((Boolean, String) -> Unit)? = null
-    
-    /**
-     * Initialize the exporter with an activity for sign-in
-     */
-    fun initialize(activity: ComponentActivity, onComplete: (Boolean, String) -> Unit) {
-        onExportComplete = onComplete
-        
-        // Configure Google Sign-In
-        val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestScopes(Scope(DriveScopes.DRIVE_FILE))
-            .build()
-        
-        googleSignInClient = GoogleSignIn.getClient(activity, signInOptions)
-        
-        // Register activity result launcher for sign-in
-        signInLauncher = activity.registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                handleSignInResult(result.data)
-            } else {
-                onExportComplete?.invoke(false, "Sign-in cancelled")
-            }
-        }
-    }
-    
-    /**
-     * Export log data to Google Drive
-     */
-    suspend fun exportToGoogleDrive(logData: List<LogData>) {
+
+    suspend fun exportCalibrationData(calibrationState: CalibrationState) {
         withContext(Dispatchers.IO) {
             try {
-                // Check if already signed in
-                val account = GoogleSignIn.getLastSignedInAccount(context)
-                if (account != null && account.grantedScopes.contains(Scope(DriveScopes.DRIVE_FILE))) {
-                    // Already signed in with required permissions
-                    setupDriveService(account)
-                    uploadToDrive(logData)
-                } else {
-                    // Need to sign in
-                    withContext(Dispatchers.Main) {
-                        signIn()
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Export failed", e)
-                withContext(Dispatchers.Main) {
-                    onExportComplete?.invoke(false, "Export failed: ${e.message}")
-                }
-            }
-        }
-    }
-    
-    /**
-     * Start Google Sign-In flow
-     */
-    private fun signIn() {
-        val signInIntent = googleSignInClient?.signInIntent
-        signInIntent?.let { intent ->
-            signInLauncher?.launch(intent)
-        } ?: run {
-            onExportComplete?.invoke(false, "Failed to create sign-in intent")
-        }
-    }
-    
-    /**
-     * Handle sign-in result
-     */
-    private fun handleSignInResult(data: Intent?) {
-        GoogleSignIn.getSignedInAccountFromIntent(data)
-            .addOnSuccessListener { account ->
-                setupDriveService(account)
-                // Continue with export after successful sign-in
-                GlobalScope.launch {
-                    val logData = getCurrentLogData()
-                    uploadToDrive(logData)
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Sign-in failed", e)
-                onExportComplete?.invoke(false, "Sign-in failed: ${e.message}")
-            }
-    }
-    
-    /**
-     * Set up Google Drive service
-     */
-    private fun setupDriveService(account: GoogleSignInAccount) {
-        // Build Drive service using account token
-        val httpTransport = NetHttpTransport()
-        val jsonFactory = GsonFactory.getDefaultInstance()
-        
-        // Get the account token
-        val accessToken = account.idToken ?: ""
-        
-        driveService = Drive.Builder(
-            httpTransport,
-            jsonFactory,
-            { request ->
-                request.headers.authorization = "Bearer $accessToken"
-            }
-        )
-            .setApplicationName("SinglePing MotoApp")
-            .build()
-    }
-    
-    /**
-     * Upload CSV data to Google Drive
-     */
-    private suspend fun uploadToDrive(logData: List<LogData>) {
-        withContext(Dispatchers.IO) {
-            try {
-                // Generate CSV content
-                val csvContent = generateCsvContent(logData)
-                
-                // Create file metadata
+                val jsonContent = generateJsonContent(calibrationState)
                 val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                val fileMetadata = File().apply {
-                    name = "SinglePing_RSSI_Log_$timestamp.csv"
-                    mimeType = "text/csv"
-                    description = "RSSI log data from SinglePing MotoApp"
+                val fileName = "Calibration_${calibrationState.selectedDistance}m_$timestamp.json"
+
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val file = File(downloadsDir, fileName)
+
+                FileOutputStream(file).use {
+                    it.write(jsonContent.toByteArray())
                 }
-                
-                // Create file content
-                val contentStream = ByteArrayOutputStream().apply {
-                    write(csvContent.toByteArray())
-                }
-                
-                val mediaContent = com.google.api.client.http.ByteArrayContent(
-                    "text/csv",
-                    contentStream.toByteArray()
-                )
-                
-                // Upload file to Google Drive
-                val file = driveService?.files()?.create(fileMetadata, mediaContent)
-                    ?.setFields("id, name, webViewLink")
-                    ?.execute()
-                
-                if (file != null) {
-                    Log.i(TAG, "File uploaded successfully: ${file.name}")
-                    withContext(Dispatchers.Main) {
-                        onExportComplete?.invoke(
-                            true,
-                            "File uploaded to Google Drive: ${file.name}"
-                        )
-                    }
-                } else {
-                    throw Exception("Failed to upload file")
-                }
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Upload failed", e)
+
+                Log.i(TAG, "File saved to: ${file.absolutePath}")
                 withContext(Dispatchers.Main) {
-                    onExportComplete?.invoke(false, "Upload failed: ${e.message}")
+                    // You can use this callback to show a toast or a notification
+                    // onExportComplete?.invoke(true, "File saved to Downloads folder")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save file", e)
+                withContext(Dispatchers.Main) {
+                    // onExportComplete?.invoke(false, "Failed to save file: ${e.message}")
                 }
             }
         }
     }
-    
-    /**
-     * Generate CSV content from log data
-     */
-    private fun generateCsvContent(logData: List<LogData>): String {
-        val csv = StringBuilder()
-        
-        // Add header row
-        csv.append("Timestamp,RSSI (dBm),Distance (m),Host Device,Host Battery,")
-        csv.append("Mipe Status,Mipe RSSI,Mipe Address,Mipe Battery (V)\n")
-        
-        // Add data rows
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
-        
-        logData.forEach { log ->
-            csv.append("${dateFormat.format(Date(log.timestamp))},")
-            csv.append("${log.rssi},")
-            csv.append("${String.format(Locale.US, "%.2f", log.distance)},")
-            csv.append("${log.hostInfo.deviceName},")
-            csv.append("${log.hostInfo.batteryLevel},")
-            csv.append("${log.mipeStatus?.connectionState ?: "N/A"},")
-            csv.append("${log.mipeStatus?.rssi ?: "N/A"},")
-            csv.append("${log.mipeStatus?.deviceAddress ?: "N/A"},")
-            csv.append("${log.mipeStatus?.batteryVoltage?.let { String.format(Locale.US, "%.2f", it) } ?: "N/A"}\n")
+
+    private fun generateJsonContent(calibrationState: CalibrationState): String {
+        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+        return gson.toJson(calibrationState)
+    }
+
+    suspend fun exportLogData(logData: List<LogData>) {
+        withContext(Dispatchers.IO) {
+            try {
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val fileName = "MotoApp_Log_$timestamp.csv"
+
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val file = File(downloadsDir, fileName)
+
+                // Create CSV content with detailed logging information
+                val csvContent = buildString {
+                    // Header row with all available fields
+                    appendLine("Timestamp,Time,RSSI (dBm),Distance (m),Host Battery (mV),Host Battery (V),Mipe Battery (mV),Mipe Battery (%),Host Device,Signal Strength,Mipe Connection State,Mipe Device Name,Mipe Device Address,Mipe RSSI,Connection Duration (s)")
+                    
+                    // Data rows
+                    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                    logData.forEach { log ->
+                        val timeStr = dateFormat.format(Date(log.timestamp))
+                        val mipeBatteryPercent = if (log.mipeBatteryMv > 0) {
+                            calculateBatteryPercentage(log.mipeBatteryMv)
+                        } else {
+                            "N/A"
+                        }
+                        
+                        // Extract Mipe status fields safely
+                        val mipeConnectionState = log.mipeStatus?.connectionState ?: "Unknown"
+                        val mipeDeviceName = log.mipeStatus?.deviceName ?: "N/A"
+                        val mipeDeviceAddress = log.mipeStatus?.deviceAddress ?: "N/A"
+                        val mipeRssi = log.mipeStatus?.rssi ?: 0
+                        val connectionDuration = log.mipeStatus?.connectionDuration?.let { it / 1000 } ?: 0
+                        
+                        append("${log.timestamp},")
+                        append("$timeStr,")
+                        append("${log.rssi},")
+                        append("${String.format("%.2f", log.distance)},")
+                        append("${log.hostBatteryMv},")
+                        append("${String.format("%.2f", log.hostInfo.batteryVoltage)},")
+                        append("${log.mipeBatteryMv},")
+                        append("$mipeBatteryPercent,")
+                        append("${log.hostInfo.deviceName},")
+                        append("${log.hostInfo.signalStrength},")
+                        append("$mipeConnectionState,")
+                        append("$mipeDeviceName,")
+                        append("$mipeDeviceAddress,")
+                        append("$mipeRssi,")
+                        appendLine("$connectionDuration")
+                    }
+                }
+
+                FileOutputStream(file).use {
+                    it.write(csvContent.toByteArray())
+                }
+
+                Log.i(TAG, "Log data exported to: ${file.absolutePath}")
+                
+                // Also create a JSON version for detailed analysis
+                val jsonFileName = "MotoApp_Log_${timestamp}.json"
+                val jsonFile = File(downloadsDir, jsonFileName)
+                
+                val gson = com.google.gson.GsonBuilder()
+                    .setPrettyPrinting()
+                    .create()
+                
+                val jsonContent = gson.toJson(mapOf(
+                    "exportTime" to timestamp,
+                    "totalSamples" to logData.size,
+                    "duration" to if (logData.isNotEmpty()) {
+                        val durationMs = logData.last().timestamp - logData.first().timestamp
+                        "${durationMs / 1000} seconds"
+                    } else "0 seconds",
+                    "data" to logData
+                ))
+                
+                FileOutputStream(jsonFile).use {
+                    it.write(jsonContent.toByteArray())
+                }
+                
+                Log.i(TAG, "JSON log data exported to: ${jsonFile.absolutePath}")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to export log data", e)
+                throw e
+            }
         }
-        
-        return csv.toString()
     }
     
-    /**
-     * Get current log data (placeholder - should be provided by caller)
-     */
-    private fun getCurrentLogData(): List<LogData> {
-        // This should be provided by the caller
-        return emptyList()
-    }
-    
-    /**
-     * Sign out from Google account
-     */
-    fun signOut() {
-        googleSignInClient?.signOut()
-        driveService = null
+    private fun calculateBatteryPercentage(batteryMv: Int): String {
+        // Battery voltage thresholds for CR2032
+        // 3.0V (3000mV) = 100%
+        // 2.0V (2000mV) = 0%
+        val percentage = when {
+            batteryMv >= 3000 -> 100
+            batteryMv <= 2000 -> 0
+            else -> ((batteryMv - 2000) * 100) / 1000
+        }
+        return "$percentage%"
     }
 }

@@ -19,13 +19,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.singleping.motoapp.ui.screens.CalibrationScreen
 import com.singleping.motoapp.ui.screens.LogViewerScreen
 import com.singleping.motoapp.ui.screens.MainScreen
 import com.singleping.motoapp.ui.theme.SinglePingMotoAppTheme
 import com.singleping.motoapp.viewmodel.MotoAppBleViewModel
 
 enum class Screen {
-    MAIN, LOG_VIEWER
+    MAIN, LOG_VIEWER, CALIBRATION
 }
 
 class MainActivity : ComponentActivity() {
@@ -86,11 +87,18 @@ class MainActivity : ComponentActivity() {
                         Screen.MAIN -> {
                             MainScreen(
                                 viewModel = viewModel,
-                                onViewLogs = { currentScreen.value = Screen.LOG_VIEWER }
+                                onViewLogs = { currentScreen.value = Screen.LOG_VIEWER },
+                                onNavigateToCalibration = { currentScreen.value = Screen.CALIBRATION }
                             )
                         }
                         Screen.LOG_VIEWER -> {
                             LogViewerScreen(
+                                viewModel = viewModel,
+                                onBack = { currentScreen.value = Screen.MAIN }
+                            )
+                        }
+                        Screen.CALIBRATION -> {
+                            CalibrationScreen(
                                 viewModel = viewModel,
                                 onBack = { currentScreen.value = Screen.MAIN }
                             )
@@ -109,10 +117,17 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.BLUETOOTH_CONNECT,
                 Manifest.permission.ACCESS_FINE_LOCATION  // Still needed for BLE scanning
             )
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            // Android 6-11 requires location permission for BLE scanning
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10-11 requires location permission for BLE scanning
+            // No WRITE_EXTERNAL_STORAGE needed due to scoped storage
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // Android 6-9 requires location permission and storage permission
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
             )
         } else {
             // Android 5 and below don't need runtime permissions

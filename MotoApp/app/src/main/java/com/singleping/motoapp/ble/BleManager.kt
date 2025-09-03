@@ -61,6 +61,7 @@ class HostBleManager(context: Context) : BleManager(context) {
     override fun getGattCallback(): BleManagerGattCallback {
         return object : BleManagerGattCallback() {
             
+            @Deprecated("since 2.7.0")
             override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
                 val service = gatt.getService(TMT1_SERVICE_UUID)
                 if (service != null) {
@@ -79,6 +80,7 @@ class HostBleManager(context: Context) : BleManager(context) {
                 return false
             }
             
+            @Deprecated("since 2.7.0")
             override fun onServicesInvalidated() {
                 rssiDataCharacteristic = null
                 controlCharacteristic = null
@@ -87,6 +89,7 @@ class HostBleManager(context: Context) : BleManager(context) {
                 logDataCharacteristic = null
             }
             
+            @Deprecated("since 2.7.0")
             override fun initialize() {
                 // Enable notifications for RSSI data
                 rssiDataCharacteristic?.let { characteristic ->
@@ -115,6 +118,7 @@ class HostBleManager(context: Context) : BleManager(context) {
                 Log.i(TAG, "BLE connection initialized successfully")
             }
             
+            @Deprecated("since 2.7.0")
             override fun onDeviceDisconnected() {
                 _connectionState.value = false
                 Log.i(TAG, "Device disconnected")
@@ -143,7 +147,6 @@ class HostBleManager(context: Context) : BleManager(context) {
             // Bytes 1-3: Timestamp (24-bit)
             
             val rssiValue = data.getByte(0)?.toInt() ?: 0
-            val timestampInt = data.getIntValue(Data.FORMAT_UINT24_LE, 1) ?: 0
             
             Log.d(TAG, "Received RSSI data (old format): $rssiValue dBm")
             // Use 0 for battery values when not available
