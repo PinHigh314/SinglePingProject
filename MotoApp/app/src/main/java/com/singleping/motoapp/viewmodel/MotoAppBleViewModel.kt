@@ -9,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.singleping.motoapp.ble.BleScanner
 import com.singleping.motoapp.ble.HostBleManager
 import com.singleping.motoapp.data.*
-import com.singleping.motoapp.distance.VelocitySmoothing
+import com.singleping.motoapp.distance.KalmanFilter
 import com.singleping.motoapp.export.DataExporter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -44,8 +44,15 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     private val _rssiHistory = MutableStateFlow<List<RssiData>>(emptyList())
     val rssiHistory: StateFlow<List<RssiData>> = _rssiHistory.asStateFlow()
     
-    private val _distanceData = MutableStateFlow(DistanceData())
-    val distanceData: StateFlow<DistanceData> = _distanceData.asStateFlow()
+    // Kalman filtered RSSI history
+    private val _filteredRssiHistory = MutableStateFlow<List<RssiData>>(emptyList())
+    val filteredRssiHistory: StateFlow<List<RssiData>> = _filteredRssiHistory.asStateFlow()
+    
+    // Kalman filter for RSSI smoothing
+    private val kalmanFilter = KalmanFilter(
+        processNoise = 0.1f,      // Q: Allows for some variation
+        measurementNoise = 2.0f    // R: RSSI measurements are noisy
+    )
     
     private val _hostInfo = MutableStateFlow(HostInfo())
     val hostInfo: StateFlow<HostInfo> = _hostInfo.asStateFlow()
@@ -75,12 +82,6 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     private var connectionTimeJob: Job? = null
     private var logStatsJob: Job? = null
     
-    // Distance update throttling
-    private var lastDistanceUpdateTime = 0L
-    private val DISTANCE_UPDATE_INTERVAL_MS = 1000L // Update distance display every 1 second
-    
-    // Velocity-based smoothing for realistic movement
-    private val velocitySmoothing = VelocitySmoothing()
     
     init {
         // Set up BLE callbacks
@@ -235,7 +236,6 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         _connectionState.value = ConnectionState()
         _streamState.value = StreamState()
         _rssiHistory.value = emptyList()
-        _distanceData.value = DistanceData()
         _errorMessage.value = null
     }
     
@@ -346,7 +346,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     private fun handleRssiData(rssiValue: Float, timestamp: Long, hostBatteryMv: Int = 0, mipeBatteryMv: Int = 0) {
-        // Add to history (keep last 300 values - 30 seconds at 100ms)
+        // Add raw RSSI to history (keep last 300 values - 30 seconds at 100ms)
         val newRssiData = RssiData(
             timestamp = timestamp, 
             value = rssiValue,
@@ -356,56 +356,21 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         val updatedHistory = (_rssiHistory.value + newRssiData).takeLast(300)
         _rssiHistory.value = updatedHistory
         
+        // Apply Kalman filter and store filtered value
+        val filteredRssi = kalmanFilter.filter(rssiValue)
+        val filteredRssiData = RssiData(
+            timestamp = timestamp,
+            value = filteredRssi,
+            hostBatteryMv = hostBatteryMv,
+            mipeBatteryMv = mipeBatteryMv
+        )
+        val updatedFilteredHistory = (_filteredRssiHistory.value + filteredRssiData).takeLast(300)
+        _filteredRssiHistory.value = updatedFilteredHistory
+        
         // Update packet count
         _streamState.value = _streamState.value.copy(
             packetsReceived = _streamState.value.packetsReceived + 1
         )
-        
-        // Calculate distance using improved calculator
-        val distanceResult = calculateImprovedDistance(rssiValue)
-        
-        // Check if we should update the distance display (throttle to 1 second)
-        val currentTime = System.currentTimeMillis()
-        val shouldUpdateDistance = (currentTime - lastDistanceUpdateTime) >= DISTANCE_UPDATE_INTERVAL_MS
-        
-        if (distanceResult != null && shouldUpdateDistance) {
-            // We have a clustered result and it's time to update
-            lastDistanceUpdateTime = currentTime
-            
-            // Apply velocity-based smoothing for realistic movement
-            val smoothedResult = velocitySmoothing.processDistance(
-                newDistance = distanceResult.distance,
-                confidence = distanceResult.confidence,
-                timestamp = currentTime
-            )
-            
-            // Update confidence based on clustering result
-            _distanceData.value = _distanceData.value.copy(
-                confidence = distanceResult.confidence
-            )
-            
-            // Use the smoothed distance
-            updateDistanceData(smoothedResult.distance)
-            
-            // Log if velocity limiting was applied
-            if (smoothedResult.velocityLimited) {
-                Log.d(TAG, "Velocity limited: ${distanceResult.distance}m -> ${smoothedResult.distance}m")
-            }
-        } else if (distanceResult == null && shouldUpdateDistance) {
-            // No clustering result yet, but it's time to update - use lookup table directly
-            val distance = calculateDistance(rssiValue)
-            lastDistanceUpdateTime = currentTime
-            
-            // Apply smoothing with lower confidence since we don't have clustering
-            val smoothedResult = velocitySmoothing.processDistance(
-                newDistance = distance,
-                confidence = 0.5f, // Lower confidence for non-clustered results
-                timestamp = currentTime
-            )
-            
-            updateDistanceData(smoothedResult.distance)
-        }
-        // If not time to update, we just collect the RSSI data without updating distance display
         
         // Update host info with current RSSI and battery
         _hostInfo.value = _hostInfo.value.copy(
@@ -413,10 +378,9 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
             batteryVoltage = if (hostBatteryMv > 0) hostBatteryMv / 1000f else _hostInfo.value.batteryVoltage
         )
         
-        // Log the data if streaming is active (use the last known distance for logging)
+        // Log the data if streaming is active - just log raw RSSI, no distance
         if (_streamState.value.isStreaming) {
-            val logDistance = _distanceData.value.currentDistance
-            logData(rssiValue, logDistance, hostBatteryMv, mipeBatteryMv)
+            logData(rssiValue, 0f, hostBatteryMv, mipeBatteryMv)
         }
     }
     
@@ -477,10 +441,6 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         _logStats.value = LogStats()
         // Also clear the RSSI histogram data
         _rssiHistory.value = emptyList()
-        // Reset distance data as well since it depends on RSSI history
-        _distanceData.value = DistanceData()
-        // Reset velocity smoothing
-        velocitySmoothing.reset()
     }
     
     fun exportLogData(): List<LogData> {
@@ -541,45 +501,6 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     
-    private fun updateDistanceData(newDistance: Float) {
-        val currentData = _distanceData.value
-        
-        // For average calculation, use the improved distance if available
-        val allDistances = mutableListOf<Float>()
-        for (rssiData in _rssiHistory.value) {
-            val result = calculateImprovedDistance(rssiData.value)
-            allDistances.add(result?.distance ?: calculateDistance(rssiData.value))
-        }
-        
-        val avgDistance = if (allDistances.isNotEmpty()) {
-            allDistances.average().toFloat()
-        } else newDistance
-        
-        val minDist = if (currentData.minDistance == Float.MAX_VALUE) {
-            newDistance
-        } else {
-            minOf(currentData.minDistance, newDistance)
-        }
-        
-        val maxDist = maxOf(currentData.maxDistance, newDistance)
-        
-        // Keep existing confidence if it was set by clustering
-        val confidence = if (currentData.confidence > 0.5f) {
-            currentData.confidence
-        } else {
-            0.5f
-        }
-        
-        _distanceData.value = DistanceData(
-            currentDistance = newDistance,
-            averageDistance = avgDistance,
-            minDistance = minDist,
-            maxDistance = maxDist,
-            confidence = confidence,
-            lastUpdated = System.currentTimeMillis(),
-            sampleCount = currentData.sampleCount + 1
-        )
-    }
     
     fun clearError() {
         _errorMessage.value = null

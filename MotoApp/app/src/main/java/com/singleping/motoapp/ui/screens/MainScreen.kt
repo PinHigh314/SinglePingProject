@@ -47,7 +47,7 @@ fun MainScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val streamState by viewModel.streamState.collectAsState()
     val rssiHistory by viewModel.rssiHistory.collectAsState()
-    val distanceData by viewModel.distanceData.collectAsState()
+    val filteredRssiHistory by viewModel.filteredRssiHistory.collectAsState()
     val hostInfo by viewModel.hostInfo.collectAsState()
     val mipeStatus by viewModel.mipeStatus.collectAsState()
     val logStats by viewModel.logStats.collectAsState()
@@ -108,7 +108,7 @@ fun MainScreen(
             Text(text = "Calibration Process")
         }
         
-        // 3. Real-Time RSSI Graph with Distance Display
+        // 3. Real-Time RSSI Graph
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -116,56 +116,15 @@ fun MainScreen(
             Column(
                 modifier = Modifier.padding(16.dp)
             ) {
-                // Distance Display above histogram
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Distance to Mipe:",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (distanceData.currentDistance > 0) {
-                                "${String.format("%.2f", distanceData.currentDistance)} m"
-                            } else {
-                                "-- m"
-                            },
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = getDistanceColor(hostInfo.signalStrength)
-                        )
-                        if (distanceData.confidence > 0) {
-                            Text(
-                                text = " (${(distanceData.confidence * 100).toInt()}%)",
-                                fontSize = 14.sp,
-                                color = when {
-                                    distanceData.confidence > 0.8f -> Color(0xFF4CAF50)
-                                    distanceData.confidence > 0.6f -> Color(0xFFFF9800)
-                                    else -> Color(0xFFF44336)
-                                }
-                            )
-                        }
-                    }
-                }
-                
-                Divider()
-                
                 Text(
-                    text = "RSSI Histogram",
+                    text = "Raw RSSI Signal",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
                 RssiGraph(
                     rssiHistory = rssiHistory,
+                    filteredRssiHistory = filteredRssiHistory,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

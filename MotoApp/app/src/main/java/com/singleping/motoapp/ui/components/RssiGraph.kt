@@ -22,6 +22,7 @@ import com.singleping.motoapp.data.RssiData
 @Composable
 fun RssiGraph(
     rssiHistory: List<RssiData>,
+    filteredRssiHistory: List<RssiData> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -31,7 +32,7 @@ fun RssiGraph(
             .background(Color(0xFFF5F5F5))
             .padding(8.dp)
     ) {
-        // Y-axis labels (calibrated with 5 dB offset)
+        // Left Y-axis labels (RSSI in dBm)
         Column(
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -39,40 +40,51 @@ fun RssiGraph(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("-25", fontSize = 10.sp, color = Color.Gray)
-            Text("-35", fontSize = 10.sp, color = Color.Gray)
-            Text("-45", fontSize = 10.sp, color = Color.Gray)
-            Text("-55", fontSize = 10.sp, color = Color.Gray)
-            Text("-65", fontSize = 10.sp, color = Color.Gray)
-            Text("-75", fontSize = 10.sp, color = Color.Gray)
-            Text("-85", fontSize = 10.sp, color = Color.Gray)
-            Text("-95", fontSize = 10.sp, color = Color.Gray)
-            Text("-105", fontSize = 10.sp, color = Color.Gray)
+            Text("-20", fontSize = 10.sp, color = Color.Blue)
+            Text("-30", fontSize = 10.sp, color = Color.Blue)
+            Text("-40", fontSize = 10.sp, color = Color.Blue)
+            Text("-50", fontSize = 10.sp, color = Color.Blue)
+            Text("-60", fontSize = 10.sp, color = Color.Blue)
+            Text("-70", fontSize = 10.sp, color = Color.Blue)
+            Text("-80", fontSize = 10.sp, color = Color.Blue)
+            Text("-90", fontSize = 10.sp, color = Color.Blue)
+            Text("-100", fontSize = 10.sp, color = Color.Blue)
+        }
+        
+        // Right Y-axis labels (placeholder for dual axis)
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(40.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("0", fontSize = 10.sp, color = Color.Gray)
+            Text("20", fontSize = 10.sp, color = Color.Gray)
+            Text("40", fontSize = 10.sp, color = Color.Gray)
+            Text("60", fontSize = 10.sp, color = Color.Gray)
+            Text("80", fontSize = 10.sp, color = Color.Gray)
+            Text("100", fontSize = 10.sp, color = Color.Gray)
+            Text("120", fontSize = 10.sp, color = Color.Gray)
+            Text("140", fontSize = 10.sp, color = Color.Gray)
+            Text("160", fontSize = 10.sp, color = Color.Gray)
         }
         
         // Graph canvas
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 45.dp, bottom = 20.dp)
+                .padding(start = 45.dp, end = 45.dp, bottom = 8.dp)
         ) {
-            drawRssiGraph(rssiHistory)
+            drawRssiGraph(rssiHistory, filteredRssiHistory)
         }
-        
-        // X-axis label
-        Text(
-            text = "Time (last 30 seconds)",
-            fontSize = 10.sp,
-            color = Color.Gray,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 4.dp),
-            textAlign = TextAlign.Center
-        )
     }
 }
 
-private fun DrawScope.drawRssiGraph(rssiHistory: List<RssiData>) {
+private fun DrawScope.drawRssiGraph(
+    rssiHistory: List<RssiData>,
+    filteredRssiHistory: List<RssiData>
+) {
     val width = size.width
     val height = size.height
     
@@ -101,12 +113,14 @@ private fun DrawScope.drawRssiGraph(rssiHistory: List<RssiData>) {
         )
     }
     
-    // Draw RSSI line (calibrated with 5 dB offset)
+    // Common scaling parameters
+    val minRssi = -100f  // Bottom of scale
+    val maxRssi = -20f   // Top of scale (matches axis labels)
+    val rssiRange = maxRssi - minRssi  // 80 dB range
+    
+    // Draw raw RSSI line (blue)
     if (rssiHistory.size > 1) {
         val path = Path()
-        val minRssi = -105f  // Adjusted from -100f
-        val maxRssi = -25f   // Adjusted from -20f
-        val rssiRange = maxRssi - minRssi
         
         rssiHistory.forEachIndexed { index, rssiData ->
             val x = (index.toFloat() / (299f)) * width // Max 300 points
@@ -120,23 +134,47 @@ private fun DrawScope.drawRssiGraph(rssiHistory: List<RssiData>) {
             }
         }
         
-        // Draw the line
+        // Draw raw RSSI line in blue with some transparency
         drawPath(
             path = path,
-            color = Color(0xFFFF6B35), // Orange/Red color
+            color = Color.Blue.copy(alpha = 0.5f),
+            style = Stroke(width = 1.5.dp.toPx())
+        )
+    }
+    
+    // Draw Kalman filtered RSSI line (red/green)
+    if (filteredRssiHistory.size > 1) {
+        val filteredPath = Path()
+        
+        filteredRssiHistory.forEachIndexed { index, rssiData ->
+            val x = (index.toFloat() / (299f)) * width // Max 300 points
+            val normalizedRssi = (rssiData.value - minRssi) / rssiRange
+            val y = height * (1f - normalizedRssi)
+            
+            if (index == 0) {
+                filteredPath.moveTo(x, y)
+            } else {
+                filteredPath.lineTo(x, y)
+            }
+        }
+        
+        // Draw filtered line in red (or green) with full opacity
+        drawPath(
+            path = filteredPath,
+            color = Color.Red,
             style = Stroke(width = 2.dp.toPx())
         )
         
-        // Draw dots for recent points
-        val recentPoints = rssiHistory.takeLast(10)
-        recentPoints.forEachIndexed { index, rssiData ->
-            val globalIndex = rssiHistory.size - recentPoints.size + index
+        // Draw dots for recent filtered points
+        val recentFilteredPoints = filteredRssiHistory.takeLast(5)
+        recentFilteredPoints.forEachIndexed { index, rssiData ->
+            val globalIndex = filteredRssiHistory.size - recentFilteredPoints.size + index
             val x = (globalIndex.toFloat() / 299f) * width
             val normalizedRssi = (rssiData.value - minRssi) / rssiRange
             val y = height * (1f - normalizedRssi)
             
             drawCircle(
-                color = Color(0xFFFF6B35),
+                color = Color.Red,
                 radius = 3.dp.toPx(),
                 center = Offset(x, y)
             )
