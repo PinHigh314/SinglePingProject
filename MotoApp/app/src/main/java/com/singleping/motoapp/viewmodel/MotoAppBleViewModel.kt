@@ -370,20 +370,15 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     private fun handleRssiData(rssiValue: Float, timestamp: Long, hostBatteryMv: Int = 0, mipeBatteryMv: Int = 0, preCalculatedFilteredRssi: Float? = null) {
-        // Add raw RSSI to history (keep last 300 values - 30 seconds at 100ms)
-        val newRssiData = RssiData(
-            timestamp = timestamp, 
-            value = rssiValue,
-            hostBatteryMv = hostBatteryMv,
-            mipeBatteryMv = mipeBatteryMv
-        )
-        val updatedHistory = (_rssiHistory.value + newRssiData).takeLast(300)
-        _rssiHistory.value = updatedHistory
-        
         // Use pre-calculated filtered RSSI if provided (from calibration), otherwise calculate it
         val filteredRssi = if (preCalculatedFilteredRssi != null) {
             preCalculatedFilteredRssi
         } else {
+            // Initialize Kalman filter with first value if not initialized
+            if (!kalmanFilter.isInitialized) {
+                kalmanFilter.filter(rssiValue) // Initialize with first value
+            }
+            
             // Get current Kalman estimate for optimistic filter reference
             val currentEstimate = kalmanFilter.getCurrentEstimate()
             
@@ -399,7 +394,18 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
         
+        // Add raw RSSI to history (keep last 300 values - 30 seconds at 100ms)
+        val newRssiData = RssiData(
+            timestamp = timestamp, 
+            value = rssiValue,
+            hostBatteryMv = hostBatteryMv,
+            mipeBatteryMv = mipeBatteryMv
+        )
+        val updatedHistory = (_rssiHistory.value + newRssiData).takeLast(300)
+        _rssiHistory.value = updatedHistory
+        
         // Store the final filtered value (result of optimistic + Kalman)
+        // IMPORTANT: Keep both histories synchronized with same number of points
         val filteredRssiData = RssiData(
             timestamp = timestamp,
             value = filteredRssi,

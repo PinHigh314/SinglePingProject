@@ -15,7 +15,8 @@ class KalmanFilter(
     // State variables
     private var x: Float = -50f  // Initial estimate (typical RSSI value)
     private var p: Float = 1.0f  // Initial error covariance
-    private var isInitialized = false
+    var isInitialized = false
+        private set
     
     /**
      * Process a new RSSI measurement through the Kalman filter

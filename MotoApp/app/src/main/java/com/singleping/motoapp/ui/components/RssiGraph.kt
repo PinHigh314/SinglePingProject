@@ -145,11 +145,18 @@ private fun DrawScope.drawRssiGraph(
     }
     
     // Draw Kalman filtered RSSI line (red/green)
-    if (filteredRssiHistory.size > 1) {
+    // Ensure both histories are aligned by using the same indexing
+    if (filteredRssiHistory.size > 1 && rssiHistory.isNotEmpty()) {
         val filteredPath = Path()
         
+        // Calculate the offset to align filtered history with raw history
+        val historyOffset = rssiHistory.size - filteredRssiHistory.size
+        val startOffset = maxOf(0, historyOffset)
+        
         filteredRssiHistory.forEachIndexed { index, rssiData ->
-            val x = (index.toFloat() / (299f)) * width // Max 300 points
+            // Align the filtered data with the raw data timeline
+            val alignedIndex = index + startOffset
+            val x = (alignedIndex.toFloat() / (299f)) * width // Max 300 points
             val normalizedRssi = (rssiData.value - minRssi) / rssiRange
             val y = height * (1f - normalizedRssi)
             
@@ -171,7 +178,9 @@ private fun DrawScope.drawRssiGraph(
         val recentFilteredPoints = filteredRssiHistory.takeLast(5)
         recentFilteredPoints.forEachIndexed { index, rssiData ->
             val globalIndex = filteredRssiHistory.size - recentFilteredPoints.size + index
-            val x = (globalIndex.toFloat() / 299f) * width
+            // Align the dots with the line
+            val alignedIndex = globalIndex + startOffset
+            val x = (alignedIndex.toFloat() / 299f) * width
             val normalizedRssi = (rssiData.value - minRssi) / rssiRange
             val y = height * (1f - normalizedRssi)
             
