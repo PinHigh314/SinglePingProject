@@ -64,16 +64,31 @@ data class LogStats(
 data class CalibrationData(
     val timestamp: Long,
     val rssi: Float,
+    val filteredRssi: Float = 0f,  // Added filtered RSSI
     val mipeBatteryMv: Int
 )
 
 data class CalibrationState(
     val selectedDistance: Int = 0,
     val sampleCount: Int = 0,
+    val targetSampleCount: Int = 110,  // Collect 110, discard first 10
     val isCollecting: Boolean = false,
     val isComplete: Boolean = false,
     val comment: String = "",
-    val data: List<CalibrationData> = emptyList()
+    val data: List<CalibrationData> = emptyList(),
+    val averageRawRssi: Float = 0f,     // Average of raw RSSI
+    val averageFilteredRssi: Float = 0f  // Average of filtered RSSI (for regression)
+)
+
+// Calibration result for a specific distance
+data class CalibrationResult(
+    val distance: Float,
+    val averageRawRssi: Float,
+    val averageFilteredRssi: Float,
+    val standardDeviation: Float,
+    val sampleCount: Int,
+    val timestamp: Long = System.currentTimeMillis(),
+    val comment: String = ""
 )
 
 // Helper functions

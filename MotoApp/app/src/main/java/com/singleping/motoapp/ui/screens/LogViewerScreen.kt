@@ -77,6 +77,46 @@ fun LogViewerScreen(
                 }
             }
 
+            // Calibration Reference Values
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Calibration Reference",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Display calibration values in two columns
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // First column (1-4m)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "1m: -45.0 dBm", fontSize = 14.sp)
+                            Text(text = "2m: -52.0 dBm", fontSize = 14.sp)
+                            Text(text = "3m: -57.0 dBm", fontSize = 14.sp)
+                            Text(text = "4m: -60.0 dBm", fontSize = 14.sp)
+                        }
+                        
+                        // Second column (5-8m)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "5m: -63.0 dBm", fontSize = 14.sp)
+                            Text(text = "6m: -65.0 dBm", fontSize = 14.sp)
+                            Text(text = "7m: -67.0 dBm", fontSize = 14.sp)
+                            Text(text = "8m: -69.0 dBm", fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+
             // Log Data List
             Text(
                 text = "Logged Data Samples",

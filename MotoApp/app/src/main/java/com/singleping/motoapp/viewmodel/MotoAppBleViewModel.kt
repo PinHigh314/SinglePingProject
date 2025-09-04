@@ -10,6 +10,7 @@ import com.singleping.motoapp.ble.BleScanner
 import com.singleping.motoapp.ble.HostBleManager
 import com.singleping.motoapp.data.*
 import com.singleping.motoapp.distance.KalmanFilter
+import com.singleping.motoapp.distance.OptimisticFilter
 import com.singleping.motoapp.export.DataExporter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -47,6 +48,11 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     // Kalman filtered RSSI history
     private val _filteredRssiHistory = MutableStateFlow<List<RssiData>>(emptyList())
     val filteredRssiHistory: StateFlow<List<RssiData>> = _filteredRssiHistory.asStateFlow()
+    
+    // Optimistic filter for pre-processing (before Kalman)
+    private val optimisticFilter = OptimisticFilter(
+        rejectionThreshold = 5.0f  // Reject signals weaker by more than 5 dBm
+    )
     
     // Kalman filter for RSSI smoothing
     private val kalmanFilter = KalmanFilter(
@@ -356,8 +362,21 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         val updatedHistory = (_rssiHistory.value + newRssiData).takeLast(300)
         _rssiHistory.value = updatedHistory
         
-        // Apply Kalman filter and store filtered value
-        val filteredRssi = kalmanFilter.filter(rssiValue)
+        // Get current Kalman estimate for optimistic filter reference
+        val currentEstimate = kalmanFilter.getCurrentEstimate()
+        
+        // Apply optimistic filter first (accept/reject decision)
+        val acceptedValue = optimisticFilter.filter(rssiValue, currentEstimate)
+        
+        // Apply Kalman filter (only if value wasn't rejected)
+        val filteredRssi = if (acceptedValue != null) {
+            kalmanFilter.filter(acceptedValue)
+        } else {
+            // Value was rejected by optimistic filter - use previous Kalman estimate
+            currentEstimate
+        }
+        
+        // Store the final filtered value (result of optimistic + Kalman)
         val filteredRssiData = RssiData(
             timestamp = timestamp,
             value = filteredRssi,

@@ -87,4 +87,10 @@ class KalmanFilter(
     fun getKalmanGain(): Float {
         return p / (p + measurementNoise)
     }
+    
+    /**
+     * Get the current state estimate without updating
+     * Used by OptimisticFilter to make accept/reject decisions
+     */
+    fun getCurrentEstimate(): Float = x
 }
