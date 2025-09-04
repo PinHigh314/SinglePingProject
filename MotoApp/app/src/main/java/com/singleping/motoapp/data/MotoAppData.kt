@@ -77,7 +77,8 @@ data class CalibrationState(
     val comment: String = "",
     val data: List<CalibrationData> = emptyList(),
     val averageRawRssi: Float = 0f,     // Average of raw RSSI
-    val averageFilteredRssi: Float = 0f  // Average of filtered RSSI (for regression)
+    val averageFilteredRssi: Float = 0f,  // Average of filtered RSSI (for regression)
+    val completedCalibrations: Map<Int, CalibrationResult> = emptyMap() // Store completed calibrations by distance
 )
 
 // Calibration result for a specific distance

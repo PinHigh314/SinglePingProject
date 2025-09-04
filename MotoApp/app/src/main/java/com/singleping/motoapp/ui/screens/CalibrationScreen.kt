@@ -2,14 +2,20 @@ package com.singleping.motoapp.ui.screens
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.singleping.motoapp.viewmodel.MotoAppBleViewModel
@@ -19,11 +25,13 @@ fun CalibrationScreen(viewModel: MotoAppBleViewModel, onBack: () -> Unit) {
     val calibrationState by viewModel.calibrationState.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val mipeStatus by viewModel.mipeStatus.collectAsState()
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Button(onClick = onBack) {
@@ -126,6 +134,135 @@ fun CalibrationScreen(viewModel: MotoAppBleViewModel, onBack: () -> Unit) {
             enabled = calibrationState.isComplete
         ) {
             Text(text = "Complete")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Calibration Log Table
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Calibration Log - Logarithmic Regression Values",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Formula: RSSI = A × log₁₀(distance) + B",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Table Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Distance\n(m)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "Status",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "Avg Filtered\nRSSI (dBm)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1.2f)
+                    )
+                }
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    thickness = 1.dp,
+                    color = Color.Gray
+                )
+                
+                // Table Data - Dynamic values from actual calibrations
+                val calibrationDistances = listOf(1, 2, 5, 10, 20, 40, 70, 100)
+                val completedCalibrations = calibrationState.completedCalibrations
+                
+                calibrationDistances.forEach { distance ->
+                    val calibration = completedCalibrations[distance]
+                    val isCalibrated = calibration != null
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "$distance",
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = if (isCalibrated) "✓" else "--",
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            color = if (isCalibrated) Color(0xFF4CAF50) else Color.Gray,
+                            fontWeight = if (isCalibrated) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = if (isCalibrated) {
+                                String.format("%.2f", calibration!!.averageFilteredRssi)
+                            } else {
+                                "Not calibrated"
+                            },
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            fontWeight = if (isCalibrated) FontWeight.Medium else FontWeight.Normal,
+                            color = if (isCalibrated) Color(0xFF2E7D32) else Color.Gray,
+                            modifier = Modifier.weight(1.2f)
+                        )
+                    }
+                }
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    thickness = 1.dp,
+                    color = Color.Gray
+                )
+                
+                // Show calibration progress
+                val calibratedCount = completedCalibrations.size
+                val totalCount = calibrationDistances.size
+                Text(
+                    text = "Calibrated: $calibratedCount / $totalCount distances",
+                    fontSize = 14.sp,
+                    color = if (calibratedCount == totalCount) Color(0xFF4CAF50) else Color.Gray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                )
+                
+                Text(
+                    text = "These values are used for logarithmic regression\nto estimate distances between calibration points.",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                )
+            }
         }
     }
 }

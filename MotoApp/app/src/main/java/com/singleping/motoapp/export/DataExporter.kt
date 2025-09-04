@@ -67,8 +67,42 @@ class DataExporter(private val context: Context) {
     }
 
     private fun generateJsonContent(calibrationState: CalibrationState): String {
+        val dateFormat = SimpleDateFormat("dd.MM.yy_HH.mm.ss", Locale.US)
+        
+        // Calculate averages
+        val averageRawRssi = if (calibrationState.data.isNotEmpty()) {
+            calibrationState.data.map { it.rssi }.average()
+        } else 0.0
+        
+        val averageFilteredRssi = if (calibrationState.data.isNotEmpty()) {
+            calibrationState.data.map { it.filteredRssi }.average()
+        } else 0.0
+        
+        // Format the data with proper decimal places and timestamps
+        val formattedData = calibrationState.data.map { data ->
+            mapOf(
+                "timestamp" to dateFormat.format(Date(data.timestamp)),
+                "rssi" to data.rssi,
+                "filteredRssi" to String.format("%.2f", data.filteredRssi).toDouble(),
+                "mipeBatteryMv" to data.mipeBatteryMv
+            )
+        }
+        
+        // Create the formatted output
+        val outputMap = mapOf(
+            "selectedDistance" to calibrationState.selectedDistance,
+            "targetSampleCount" to calibrationState.targetSampleCount,
+            "sampleCount" to calibrationState.sampleCount,
+            "isCollecting" to calibrationState.isCollecting,
+            "isComplete" to calibrationState.isComplete,
+            "averageRawRssi" to String.format("%.2f", averageRawRssi).toDouble(),
+            "averageFilteredRssi" to String.format("%.2f", averageFilteredRssi).toDouble(),
+            "comment" to calibrationState.comment,
+            "data" to formattedData
+        )
+        
         val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        return gson.toJson(calibrationState)
+        return gson.toJson(outputMap)
     }
 
     suspend fun exportLogData(logData: List<LogData>) {

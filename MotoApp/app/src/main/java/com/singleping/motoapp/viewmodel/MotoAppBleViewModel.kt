@@ -308,11 +308,29 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     private fun handleRealRssiData(rssi: Int, hostBatteryMv: Int, mipeBatteryMv: Int) {
         val timestamp = System.currentTimeMillis()
+        
+        // Process RSSI through filters first to get filtered value
+        val rssiValue = rssi.toFloat()
+        
+        // Get current Kalman estimate for optimistic filter reference
+        val currentEstimate = kalmanFilter.getCurrentEstimate()
+        
+        // Apply optimistic filter first (accept/reject decision)
+        val acceptedValue = optimisticFilter.filter(rssiValue, currentEstimate)
+        
+        // Apply Kalman filter (only if value wasn't rejected)
+        val filteredRssi = if (acceptedValue != null) {
+            kalmanFilter.filter(acceptedValue)
+        } else {
+            // Value was rejected by optimistic filter - use previous Kalman estimate
+            currentEstimate
+        }
 
         if (_calibrationState.value.isCollecting) {
             val calibrationData = CalibrationData(
                 timestamp = timestamp,
-                rssi = rssi.toFloat(),
+                rssi = rssiValue,
+                filteredRssi = filteredRssi,  // Now includes filtered RSSI
                 mipeBatteryMv = mipeBatteryMv
             )
             val updatedData = _calibrationState.value.data + calibrationData
@@ -321,7 +339,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
                 sampleCount = updatedData.size
             )
 
-            if (updatedData.size >= 50) {
+            if (updatedData.size >= 100) {
                 _calibrationState.value = _calibrationState.value.copy(
                     isCollecting = false,
                     isComplete = true
@@ -332,7 +350,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         
         // Update host info with battery voltage
         _hostInfo.value = _hostInfo.value.copy(
-            signalStrength = rssi.toFloat(),
+            signalStrength = rssiValue,
             batteryVoltage = hostBatteryMv / 1000f  // Convert mV to V
         )
         
@@ -348,10 +366,10 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
             Log.i(TAG, "Battery levels - Host: $hostBatteryMv mV, Mipe: $mipeBatteryMv mV")
         }
         
-        handleRssiData(rssi.toFloat(), timestamp, hostBatteryMv, mipeBatteryMv)
+        handleRssiData(rssiValue, timestamp, hostBatteryMv, mipeBatteryMv, filteredRssi)
     }
     
-    private fun handleRssiData(rssiValue: Float, timestamp: Long, hostBatteryMv: Int = 0, mipeBatteryMv: Int = 0) {
+    private fun handleRssiData(rssiValue: Float, timestamp: Long, hostBatteryMv: Int = 0, mipeBatteryMv: Int = 0, preCalculatedFilteredRssi: Float? = null) {
         // Add raw RSSI to history (keep last 300 values - 30 seconds at 100ms)
         val newRssiData = RssiData(
             timestamp = timestamp, 
@@ -362,18 +380,23 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         val updatedHistory = (_rssiHistory.value + newRssiData).takeLast(300)
         _rssiHistory.value = updatedHistory
         
-        // Get current Kalman estimate for optimistic filter reference
-        val currentEstimate = kalmanFilter.getCurrentEstimate()
-        
-        // Apply optimistic filter first (accept/reject decision)
-        val acceptedValue = optimisticFilter.filter(rssiValue, currentEstimate)
-        
-        // Apply Kalman filter (only if value wasn't rejected)
-        val filteredRssi = if (acceptedValue != null) {
-            kalmanFilter.filter(acceptedValue)
+        // Use pre-calculated filtered RSSI if provided (from calibration), otherwise calculate it
+        val filteredRssi = if (preCalculatedFilteredRssi != null) {
+            preCalculatedFilteredRssi
         } else {
-            // Value was rejected by optimistic filter - use previous Kalman estimate
-            currentEstimate
+            // Get current Kalman estimate for optimistic filter reference
+            val currentEstimate = kalmanFilter.getCurrentEstimate()
+            
+            // Apply optimistic filter first (accept/reject decision)
+            val acceptedValue = optimisticFilter.filter(rssiValue, currentEstimate)
+            
+            // Apply Kalman filter (only if value wasn't rejected)
+            if (acceptedValue != null) {
+                kalmanFilter.filter(acceptedValue)
+            } else {
+                // Value was rejected by optimistic filter - use previous Kalman estimate
+                currentEstimate
+            }
         }
         
         // Store the final filtered value (result of optimistic + Kalman)
@@ -516,8 +539,48 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun completeCalibration(comment: String) {
-        val finalState = _calibrationState.value.copy(comment = comment)
+        val currentState = _calibrationState.value
+        
+        // Calculate averages from the collected data
+        val averageRaw = if (currentState.data.isNotEmpty()) {
+            currentState.data.map { it.rssi }.average().toFloat()
+        } else 0f
+        
+        val averageFiltered = if (currentState.data.isNotEmpty()) {
+            currentState.data.map { it.filteredRssi }.average().toFloat()
+        } else 0f
+        
+        // Calculate standard deviation
+        val stdDev = if (currentState.data.isNotEmpty()) {
+            val mean = averageFiltered
+            val variance = currentState.data.map { (it.filteredRssi - mean) * (it.filteredRssi - mean) }.average()
+            kotlin.math.sqrt(variance).toFloat()
+        } else 0f
+        
+        // Create calibration result
+        val calibrationResult = CalibrationResult(
+            distance = currentState.selectedDistance.toFloat(),
+            averageRawRssi = averageRaw,
+            averageFilteredRssi = averageFiltered,
+            standardDeviation = stdDev,
+            sampleCount = currentState.data.size,
+            comment = comment
+        )
+        
+        // Update the completed calibrations map
+        val updatedCalibrations = currentState.completedCalibrations.toMutableMap()
+        updatedCalibrations[currentState.selectedDistance] = calibrationResult
+        
+        // Update state with averages and completed calibrations
+        val finalState = currentState.copy(
+            comment = comment,
+            averageRawRssi = averageRaw,
+            averageFilteredRssi = averageFiltered,
+            completedCalibrations = updatedCalibrations
+        )
         _calibrationState.value = finalState
+        
+        // Export the calibration data
         viewModelScope.launch {
             dataExporter.exportCalibrationData(finalState)
         }

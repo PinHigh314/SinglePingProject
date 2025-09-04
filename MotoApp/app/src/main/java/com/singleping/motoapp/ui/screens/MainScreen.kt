@@ -98,14 +98,14 @@ fun MainScreen(
         )
 
         Button(
-            onClick = onNavigateToCalibration,
+            onClick = onNavigateToCalibration,  // Navigate to CalibrationScreen
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            enabled = connectionState.isConnected
+            enabled = true  // Always enabled, not dependent on connection
         ) {
             Text(
-                text = "Calibration Process",
+                text = "Calibration",  // Simplified button text
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
