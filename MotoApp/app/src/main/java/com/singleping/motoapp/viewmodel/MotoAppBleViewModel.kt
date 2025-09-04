@@ -535,7 +535,15 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun cancelCalibration() {
-        _calibrationState.value = CalibrationState()
+        // Keep the completed calibrations when canceling
+        val currentCompletedCalibrations = _calibrationState.value.completedCalibrations
+        _calibrationState.value = CalibrationState(
+            completedCalibrations = currentCompletedCalibrations
+        )
+        // Stop data stream if it's running
+        if (_streamState.value.isStreaming) {
+            stopDataStream()
+        }
     }
 
     fun completeCalibration(comment: String) {
