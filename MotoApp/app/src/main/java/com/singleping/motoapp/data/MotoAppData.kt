@@ -46,6 +46,7 @@ data class HostInfo(
 data class LogData(
     val timestamp: Long = System.currentTimeMillis(),
     val rssi: Float,
+    val filteredRssi: Float = 0f, // Kalman filtered RSSI
     val distance: Float,
     val hostInfo: HostInfo,
     val mipeStatus: MipeStatus?,

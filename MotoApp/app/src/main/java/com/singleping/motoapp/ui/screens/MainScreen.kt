@@ -94,19 +94,36 @@ fun MainScreen(
         // 2.5 Mipe Sync Control Section
         MipeSyncSection(
             isStreaming = streamState.isStreaming,
-            onSyncMipe = { viewModel.syncWithMipe() },
-            batteryVoltage = mipeStatus?.batteryVoltage
+            onSyncMipe = { viewModel.syncWithMipe() }
         )
 
         Button(
             onClick = onNavigateToCalibration,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
+                .height(56.dp),
             enabled = connectionState.isConnected
         ) {
-            Text(text = "Calibration Process")
+            Text(
+                text = "Calibration Process",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
+        
+        // Distance Display
+        val latestFilteredRssi = filteredRssiHistory.lastOrNull()?.value ?: -50f
+        val distance = calculateDistance(latestFilteredRssi)
+        Text(
+            text = "Distance: ${String.format("%.1f", distance)} m",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF4CAF50), // Green color
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            textAlign = TextAlign.Center
+        )
         
         // 3. Real-Time RSSI Graph
         Card(
@@ -228,42 +245,23 @@ fun ConnectionSection(
 @Composable
 fun MipeSyncSection(
     isStreaming: Boolean,
-    onSyncMipe: () -> Unit,
-    batteryVoltage: Float? = null
+    onSyncMipe: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    Button(
+        onClick = onSyncMipe,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFFFA000), // Orange color for sync
+            disabledContainerColor = Color.Gray
+        ),
+        enabled = !isStreaming // Only disable during streaming, enable otherwise
     ) {
-        Button(
-            onClick = onSyncMipe,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFFFA000), // Orange color for sync
-                disabledContainerColor = Color.Gray
-            ),
-            enabled = !isStreaming // Only disable during streaming, enable otherwise
-        ) {
-            Text(
-                text = "🔗 SYNC WITH MIPE",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-        
-        // Battery voltage display
         Text(
-            text = if (batteryVoltage != null) {
-                "🔋 ${String.format("%.2f", batteryVoltage)}V"
-            } else {
-                "🔋 ---"
-            },
+            text = "🔗 SYNC WITH MIPE",
             fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (batteryVoltage != null) Color(0xFF4CAF50) else Color.Gray
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -397,7 +395,7 @@ fun StatusPanel(
                 fontWeight = FontWeight.Medium
             )
             
-            Divider()
+            HorizontalDivider()
             
             // BLE Connection Status
             Row(
@@ -449,7 +447,7 @@ fun StatusPanel(
                 Text("${streamState.packetsReceived}")
             }
             
-            Divider()
+            HorizontalDivider()
             
             // Host Device Information
             Text(
@@ -592,7 +590,7 @@ fun DistanceSection(
                 }
             }
             
-            Divider()
+            HorizontalDivider()
             
             // Distance Statistics
             Text(
@@ -663,7 +661,7 @@ fun HostStatusSection(status: MipeStatus) {
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium
             )
-            Divider()
+            HorizontalDivider()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween

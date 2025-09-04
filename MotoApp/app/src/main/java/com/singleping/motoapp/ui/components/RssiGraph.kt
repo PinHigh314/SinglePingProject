@@ -17,7 +17,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import com.singleping.motoapp.data.RssiData
+import com.singleping.motoapp.data.calculateDistance
 
 @Composable
 fun RssiGraph(

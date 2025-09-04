@@ -385,8 +385,12 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     private fun logData(rssi: Float, distance: Float, hostBatteryMv: Int = 0, mipeBatteryMv: Int = 0) {
+        // Get the latest filtered RSSI value
+        val filteredRssi = _filteredRssiHistory.value.lastOrNull()?.value ?: rssi
+        
         val logEntry = LogData(
             rssi = rssi,
+            filteredRssi = filteredRssi,
             distance = distance,
             hostInfo = _hostInfo.value.copy(
                 batteryVoltage = if (hostBatteryMv > 0) hostBatteryMv / 1000f else _hostInfo.value.batteryVoltage
@@ -450,7 +454,7 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     /**
      * Initialize data exporter with activity context
      */
-    fun initializeExporter(activity: ComponentActivity) {
+    fun initializeExporter() {
         // No longer needed for local storage
         _errorMessage.value = "Ready to save data locally"
     }

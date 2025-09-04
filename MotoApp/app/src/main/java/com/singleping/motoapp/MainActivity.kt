@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         // Initialize the data exporter for Google Drive
-        viewModel.initializeExporter(this)
+        viewModel.initializeExporter()
         
         // Check and request BLE permissions
         checkAndRequestPermissions()

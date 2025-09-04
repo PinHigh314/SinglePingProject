@@ -63,7 +63,7 @@ class DataExporter(private val context: Context) {
                 // Create CSV content with detailed logging information
                 val csvContent = buildString {
                     // Header row with all available fields
-                    appendLine("Timestamp,Time,RSSI (dBm),Distance (m),Host Battery (mV),Host Battery (V),Mipe Battery (mV),Mipe Battery (%),Host Device,Signal Strength,Mipe Connection State,Mipe Device Name,Mipe Device Address,Mipe RSSI,Connection Duration (s)")
+                    appendLine("Timestamp,Time,RSSI (dBm),Filtered RSSI (dBm),Distance (m),Host Battery (mV),Host Battery (V),Mipe Battery (mV),Mipe Battery (%),Host Device,Signal Strength,Mipe Connection State,Mipe Device Name,Mipe Device Address,Mipe RSSI,Connection Duration (s)")
                     
                     // Data rows
                     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
@@ -85,6 +85,7 @@ class DataExporter(private val context: Context) {
                         append("${log.timestamp},")
                         append("$timeStr,")
                         append("${log.rssi},")
+                        append("${log.filteredRssi},")
                         append("${String.format("%.2f", log.distance)},")
                         append("${log.hostBatteryMv},")
                         append("${String.format("%.2f", log.hostInfo.batteryVoltage)},")
@@ -110,6 +111,21 @@ class DataExporter(private val context: Context) {
                 val jsonFileName = "MotoApp_Log_${timestamp}.json"
                 val jsonFile = File(downloadsDir, jsonFileName)
                 
+                // Create simplified log data with formatted timestamps
+                val simplifiedData = logData.map { log ->
+                    val dateFormat = SimpleDateFormat("d.M.yy_H.mm.ss", Locale.US)
+                    val formattedTimestamp = dateFormat.format(Date(log.timestamp))
+                    
+                    mapOf(
+                        "Mipe rssi" to log.rssi,
+                        "filteredRssi" to log.filteredRssi,
+                        "distance" to log.distance,
+                        "hostBatteryMv" to log.hostBatteryMv,
+                        "mipeBatteryMv" to log.mipeBatteryMv,
+                        "timestamp" to formattedTimestamp
+                    )
+                }
+                
                 val gson = com.google.gson.GsonBuilder()
                     .setPrettyPrinting()
                     .create()
@@ -121,7 +137,7 @@ class DataExporter(private val context: Context) {
                         val durationMs = logData.last().timestamp - logData.first().timestamp
                         "${durationMs / 1000} seconds"
                     } else "0 seconds",
-                    "data" to logData
+                    "data" to simplifiedData
                 ))
                 
                 FileOutputStream(jsonFile).use {
