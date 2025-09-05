@@ -101,12 +101,28 @@ fun getDistanceColor(rssi: Float): Color {
     }
 }
 
-// Legacy distance calculation - now uses lookup table for consistency
+// Global logarithmic distance calculator instance
+private val logarithmicCalculator = com.singleping.motoapp.distance.LogarithmicDistanceCalculator()
+
+// Distance calculation using logarithmic regression with calibration data
 fun calculateDistance(rssi: Float): Float {
-    // Use the same lookup table as the improved calculator for consistency
-    val lookupTable = com.singleping.motoapp.distance.DistanceLookupTable()
-    return lookupTable.getDistance(rssi)
+    // Use logarithmic regression if calibrated, otherwise use default model
+    return logarithmicCalculator.getDistance(rssi)
 }
+
+// Update the logarithmic calculator with calibration data
+fun updateDistanceCalculator(calibrationData: Map<Int, CalibrationResult>) {
+    logarithmicCalculator.clearCalibration()
+    calibrationData.forEach { (distance, result) ->
+        logarithmicCalculator.addCalibrationPoint(
+            distance.toFloat(),
+            result.averageFilteredRssi
+        )
+    }
+}
+
+// Get calculator info for debugging
+fun getCalculatorModelInfo() = logarithmicCalculator.getModelInfo()
 
 // Improved distance calculation using clustering and lookup table
 private val improvedCalculator = ImprovedDistanceCalculator(

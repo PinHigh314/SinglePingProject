@@ -255,6 +255,17 @@ fun CalibrationScreen(viewModel: MotoAppBleViewModel, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 )
                 
+                // Add persistence indicator
+                if (calibratedCount > 0) {
+                    Text(
+                        text = "✓ Calibrations saved to device storage",
+                        fontSize = 12.sp,
+                        color = Color(0xFF4CAF50),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
+                }
+                
                 Text(
                     text = "These values are used for logarithmic regression\nto estimate distances between calibration points.",
                     fontSize = 12.sp,
@@ -262,6 +273,23 @@ fun CalibrationScreen(viewModel: MotoAppBleViewModel, onBack: () -> Unit) {
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 )
+                
+                // Clear All Calibrations Button
+                if (calibratedCount > 0) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { viewModel.clearAllCalibrations() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFD32F2F) // Red color for destructive action
+                        )
+                    ) {
+                        Text(
+                            text = "Clear All Calibrations",
+                            color = Color.White
+                        )
+                    }
+                }
             }
         }
     }

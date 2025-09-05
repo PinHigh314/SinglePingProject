@@ -9,9 +9,11 @@ import androidx.lifecycle.viewModelScope
 import com.singleping.motoapp.ble.BleScanner
 import com.singleping.motoapp.ble.HostBleManager
 import com.singleping.motoapp.data.*
+import com.singleping.motoapp.data.updateDistanceCalculator
 import com.singleping.motoapp.distance.KalmanFilter
 import com.singleping.motoapp.distance.OptimisticFilter
 import com.singleping.motoapp.export.DataExporter
+import com.singleping.motoapp.storage.CalibrationStorage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +36,9 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     // Data exporter for Google Drive
     private val dataExporter = DataExporter(application)
+    
+    // Calibration storage for persistent data
+    private val calibrationStorage = CalibrationStorage(application)
     
     // State flows for UI
     private val _connectionState = MutableStateFlow(ConnectionState())
@@ -93,10 +98,34 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         // Set up BLE callbacks
         setupBleCallbacks()
         
+        // Load saved calibrations on startup
+        loadSavedCalibrations()
+        
         // Monitor BLE connection state
         viewModelScope.launch {
             bleManager.connectionState.collect { isConnected ->
                 handleBleConnectionChange(isConnected)
+            }
+        }
+    }
+    
+    private fun loadSavedCalibrations() {
+        viewModelScope.launch {
+            try {
+                val savedCalibrations = calibrationStorage.loadCalibrations()
+                if (savedCalibrations.isNotEmpty()) {
+                    // Update the calibration state with saved data
+                    _calibrationState.value = _calibrationState.value.copy(
+                        completedCalibrations = savedCalibrations
+                    )
+                    
+                    // Update the distance calculator with saved calibrations
+                    updateDistanceCalculator(savedCalibrations)
+                    
+                    Log.i(TAG, "Loaded ${savedCalibrations.size} saved calibration points")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load saved calibrations", e)
             }
         }
     }
@@ -241,7 +270,14 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         // Reset states
         _connectionState.value = ConnectionState()
         _streamState.value = StreamState()
+        
+        // Clear both RSSI histories together to keep them synchronized
         _rssiHistory.value = emptyList()
+        _filteredRssiHistory.value = emptyList()
+        
+        // Reset filters
+        kalmanFilter.reset()
+        
         _errorMessage.value = null
     }
     
@@ -594,6 +630,13 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
         )
         _calibrationState.value = finalState
         
+        // Update the distance calculator with the new calibration data
+        updateDistanceCalculator(updatedCalibrations)
+        
+        // Save calibrations to persistent storage
+        calibrationStorage.saveCalibrations(updatedCalibrations)
+        Log.i(TAG, "Saved ${updatedCalibrations.size} calibration points to storage")
+        
         // Export the calibration data
         viewModelScope.launch {
             dataExporter.exportCalibrationData(finalState)
@@ -604,6 +647,49 @@ class MotoAppBleViewModel(application: Application) : AndroidViewModel(applicati
     
     fun clearError() {
         _errorMessage.value = null
+    }
+    
+    /**
+     * Clear all saved calibrations
+     */
+    fun clearAllCalibrations() {
+        viewModelScope.launch {
+            // Clear from persistent storage
+            calibrationStorage.clearCalibrations()
+            
+            // Clear from current state
+            _calibrationState.value = CalibrationState()
+            
+            // Reset the distance calculator to default
+            updateDistanceCalculator(emptyMap())
+            
+            _errorMessage.value = "All calibrations cleared"
+            Log.i(TAG, "Cleared all calibration data")
+        }
+    }
+    
+    /**
+     * Reset measurement data (RSSI histories, filters, logs)
+     */
+    fun resetMeasurement() {
+        viewModelScope.launch {
+            // Clear both RSSI histories simultaneously to keep them synchronized
+            _rssiHistory.value = emptyList()
+            _filteredRssiHistory.value = emptyList()
+            
+            // Reset filters
+            kalmanFilter.reset()
+            optimisticFilter.reset()
+            
+            // Clear log data
+            clearLogData()
+            
+            // Reset packet count but keep streaming state
+            _streamState.value = _streamState.value.copy(packetsReceived = 0)
+            
+            _errorMessage.value = "Measurement data reset"
+            Log.i(TAG, "Reset all measurement data")
+        }
     }
 
     /**

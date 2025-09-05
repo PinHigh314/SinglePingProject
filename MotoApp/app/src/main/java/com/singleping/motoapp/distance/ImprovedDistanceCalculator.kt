@@ -3,12 +3,12 @@ package com.singleping.motoapp.distance
 import android.util.Log
 
 /**
- * Improved Distance Calculator that combines RSSI clustering with lookup table
+ * Improved Distance Calculator that combines RSSI clustering with logarithmic regression
  * for accurate distance measurements.
  */
 class ImprovedDistanceCalculator(
     private val useClusteringFilter: Boolean = true,
-    private val useLookupTable: Boolean = true,
+    private val useLookupTable: Boolean = false,  // Deprecated - now uses logarithmic regression
     private val clusteringSampleSize: Int = 10,  // Reduced from 20 to 10 for 1-second updates
     private val clusteringVariationPercent: Int = 10
 ) {
@@ -19,7 +19,7 @@ class ImprovedDistanceCalculator(
     private val clusteringFilter = RssiClusteringFilter(
         variationPercent = clusteringVariationPercent
     )
-    private val lookupTable = DistanceLookupTable()
+    private val logarithmicCalculator = LogarithmicDistanceCalculator()
     
     // Buffer for collecting RSSI samples for clustering
     private val rssiBuffer = mutableListOf<Float>()
@@ -91,14 +91,11 @@ class ImprovedDistanceCalculator(
             return calculateDistanceDirectly(avgRssi)
         }
         
-        val distance = if (useLookupTable) {
-            lookupTable.getDistance(clusteringResult.filteredRssi)
-        } else {
-            calculateTheoreticalDistance(clusteringResult.filteredRssi)
-        }
+        // Use logarithmic regression for distance calculation
+        val distance = logarithmicCalculator.getDistance(clusteringResult.filteredRssi)
         
-        // Combine clustering confidence with distance confidence
-        val distanceConfidence = lookupTable.getDistanceConfidence(clusteringResult.filteredRssi)
+        // Calculate confidence based on RSSI strength
+        val distanceConfidence = getDistanceConfidence(clusteringResult.filteredRssi)
         val combinedConfidence = (clusteringResult.confidence * 0.7f + distanceConfidence * 0.3f)
         
         Log.d(TAG, "Clustered RSSI: ${clusteringResult.filteredRssi} dBm, " +
@@ -110,7 +107,7 @@ class ImprovedDistanceCalculator(
             distance = distance,
             filteredRssi = clusteringResult.filteredRssi,
             confidence = combinedConfidence,
-            method = if (useLookupTable) "Clustered+LookupTable" else "Clustered+Theoretical",
+            method = "Clustered+LogarithmicRegression",
             clusterInfo = ClusterInfo(
                 clusterCount = clusteringResult.totalClusters,
                 majorityClusterSize = clusteringResult.clusterSize,
@@ -123,21 +120,32 @@ class ImprovedDistanceCalculator(
      * Calculate distance directly without clustering
      */
     private fun calculateDistanceDirectly(rssi: Float): DistanceResult {
-        val distance = if (useLookupTable) {
-            lookupTable.getDistance(rssi)
-        } else {
-            calculateTheoreticalDistance(rssi)
-        }
+        // Use logarithmic regression for distance calculation
+        val distance = logarithmicCalculator.getDistance(rssi)
         
-        val confidence = lookupTable.getDistanceConfidence(rssi)
+        val confidence = getDistanceConfidence(rssi)
         
         return DistanceResult(
             distance = distance,
             filteredRssi = rssi,
             confidence = confidence,
-            method = if (useLookupTable) "Direct+LookupTable" else "Direct+Theoretical",
+            method = "Direct+LogarithmicRegression",
             clusterInfo = null
         )
+    }
+    
+    /**
+     * Get confidence factor based on RSSI value
+     * Higher confidence for RSSI values within optimal range
+     */
+    private fun getDistanceConfidence(rssi: Float): Float {
+        return when {
+            rssi > -30 -> 0.95f  // Very close, high confidence
+            rssi > -50 -> 0.85f  // Good signal range
+            rssi > -70 -> 0.70f  // Medium range
+            rssi > -85 -> 0.50f  // Weak signal
+            else -> 0.30f        // Very weak signal
+        }
     }
     
     /**
@@ -180,9 +188,19 @@ class ImprovedDistanceCalculator(
     }
     
     /**
-     * Check if lookup table is enabled
+     * Check if lookup table is enabled (deprecated - always returns false)
      */
     fun isLookupTableEnabled(): Boolean {
-        return useLookupTable
+        return false  // Lookup table is deprecated, using logarithmic regression
+    }
+    
+    /**
+     * Update the logarithmic calculator with calibration data
+     */
+    fun updateCalibration(calibrationPoints: Map<Float, Float>) {
+        logarithmicCalculator.clearCalibration()
+        calibrationPoints.forEach { (distance, rssi) ->
+            logarithmicCalculator.addCalibrationPoint(distance, rssi)
+        }
     }
 }

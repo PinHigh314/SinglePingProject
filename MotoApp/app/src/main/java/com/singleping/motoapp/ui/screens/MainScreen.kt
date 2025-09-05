@@ -111,19 +111,46 @@ fun MainScreen(
             )
         }
         
-        // Distance Display
+        // Distance Display with Calibration Info
         val latestFilteredRssi = filteredRssiHistory.lastOrNull()?.value ?: -50f
         val distance = calculateDistance(latestFilteredRssi)
-        Text(
-            text = "Distance: ${String.format("%.1f", distance)} m",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF4CAF50), // Green color
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            textAlign = TextAlign.Center
-        )
+        val modelInfo = getCalculatorModelInfo()
+        
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Distance: ${String.format("%.1f", distance)} m",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF4CAF50), // Green color
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            
+            // Show calibration status with clear indication
+            Text(
+                text = if (modelInfo.calibrationPointCount >= 2) {
+                    "📊 Log Regression (${modelInfo.calibrationPointCount} Saved Cal Points)"
+                } else {
+                    "⚠️ Default Log Model (No Cal Points)"
+                },
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (modelInfo.calibrationPointCount >= 2) 
+                    Color(0xFF4CAF50) else Color(0xFFFF9800),
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            
+            // Show model quality if calibrated
+            if (modelInfo.calibrationPointCount >= 2) {
+                Text(
+                    text = "Model R² = ${String.format("%.3f", modelInfo.rSquared)}",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         
         // 3. Real-Time RSSI Graph
         Card(

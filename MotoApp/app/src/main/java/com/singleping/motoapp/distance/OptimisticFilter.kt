@@ -83,7 +83,14 @@ class OptimisticFilter(
     fun getRejectionThreshold(): Float = rejectionThreshold
     
     /**
-     * Get the last accepted value (for debugging)
+     * Get the current rejection threshold
      */
-    fun getLastAcceptedValue(): Float? = lastAcceptedValue
+    fun getRejectionThreshold(): Float = rejectionThreshold
+    
+    /**
+     * Reset the filter state
+     */
+    fun reset() {
+        lastAcceptedValue = null
+    }
 }
